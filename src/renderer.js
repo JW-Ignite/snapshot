@@ -250,11 +250,23 @@ function initializeApp() {
   });
 
   // Event Listeners
-  newSnapshotBtn.addEventListener('click', () => {
-    const name = snapshotNameInput.value.trim() || `snapshot_${Date.now()}`;
-    takeNewSnapshot(name);
-    snapshotNameInput.value = '';
-  });
+newSnapshotBtn.addEventListener('click', () => {
+  const now = new Date();
+
+  // Replaced colons with hyphens and the space with an underscore
+  const formatted =
+    now.getFullYear() + '-' +
+    String(now.getMonth() + 1).padStart(2, '0') + '-' +
+    String(now.getDate()).padStart(2, '0') + '_' +
+    String(now.getHours()).padStart(2, '0') + '-' +
+    String(now.getMinutes()).padStart(2, '0') + '-' +
+    String(now.getSeconds()).padStart(2, '0');
+
+  const name = snapshotNameInput.value.trim() || "snapshot_" + formatted;
+  
+  takeNewSnapshot(name);
+  snapshotNameInput.value = '';
+});
 
   if (deleteBtn) deleteBtn.addEventListener('click', () => {
     if (currentSnapshot) {
