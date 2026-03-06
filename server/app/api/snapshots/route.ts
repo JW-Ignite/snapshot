@@ -1,6 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 
+type SnapshotStatus = 'Pending' | 'Running' | 'Completed' | 'Failed';
+
+function estimateSnapshotSizeBytes(payload: unknown): number {
+  try {
+    return Buffer.byteLength(JSON.stringify(payload || {}), 'utf8');
+  } catch {
+    return 0;
+  }
+}
+
+function normalizeStatus(value: unknown): SnapshotStatus {
+  if (typeof value !== 'string') return 'Completed';
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'pending') return 'Pending';
+  if (normalized === 'running') return 'Running';
+  if (normalized === 'failed') return 'Failed';
+  return 'Completed';
+}
+
+function extractStatus(data: any): SnapshotStatus {
+  const candidate = data?.metadata?.snapshot_status || data?.metadata?.status;
+  return normalizeStatus(candidate);
+}
+
+function extractStatusError(data: any): string | null {
+  const error = data?.metadata?.error || data?.metadata?.failure_reason || null;
+  if (typeof error === 'string' && error.trim()) return error.trim();
+  return null;
+}
+
 // Validate API key
 function isAuthorized(req: NextRequest) {
   const key = req.headers.get('x-api-key');
@@ -53,7 +83,7 @@ export async function GET(req: NextRequest) {
 
   let query = getSupabase()
     .from('snapshots')
-    .select('id, machine_id, machine_name, snapshot_name, timestamp')
+    .select('id, machine_id, machine_name, snapshot_name, timestamp, data')
     .order('timestamp', { ascending: false });
 
   if (machine_id) {
@@ -63,5 +93,16 @@ export async function GET(req: NextRequest) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json(data);
+  const withSizes = (data || []).map((row: any) => ({
+    id: row.id,
+    machine_id: row.machine_id,
+    machine_name: row.machine_name,
+    snapshot_name: row.snapshot_name,
+    timestamp: row.timestamp,
+    snapshot_size_bytes: estimateSnapshotSizeBytes(row.data),
+    snapshot_status: extractStatus(row.data),
+    snapshot_error: extractStatusError(row.data),
+  }));
+
+  return NextResponse.json(withSizes);
 }

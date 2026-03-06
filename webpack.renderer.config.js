@@ -10,6 +10,13 @@ module.exports = {
   module: {
     rules,
   },
+  devServer: {
+    historyApiFallback: {
+      rewrites: [
+        { from: /^\/$/, to: '/main_window/index.html' },
+      ],
+    },
+  },
   resolve: {
     fallback: {
       fs: false,
