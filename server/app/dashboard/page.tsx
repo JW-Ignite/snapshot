@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 
 interface SnapshotMeta {
   id: string;
@@ -284,6 +285,14 @@ export default function Dashboard() {
         <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
           <h1 className="text-xl font-bold">📸 Snapshot Server</h1>
           <p className="text-sm opacity-80">Multi-machine dashboard</p>
+          <Link
+            href="/dashboard/engineer"
+            className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
+          >
+            <span>⚙️</span>
+            Engineer Panel
+            <span className="text-white/60">→</span>
+          </Link>
         </div>
 
         {loading && <p className="p-4 text-gray-500">Loading...</p>}
