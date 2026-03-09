@@ -339,9 +339,6 @@ export default function Dashboard() {
 
         {visibleMachines.map(machine => {
           return (
-            <div key={machineId} className="border-b">
-              <div className="px-4 py-2 bg-gray-50 font-semibold text-sm text-gray-600 uppercase tracking-wide">
-                {machineName}
             <div key={machine.machineId} className="border-b">
               <div className="px-4 py-2 bg-gray-50">
                 <div className="font-semibold text-sm text-gray-700 tracking-wide">
@@ -390,8 +387,6 @@ export default function Dashboard() {
       {/* Main content */}
       <div className="flex-1 overflow-y-auto">
         {!selected ? (
-          <div className="flex items-center justify-center h-full text-gray-400 text-lg">
-            Select a snapshot to view details
           <div className="p-8">
             <h2 className="text-2xl font-bold text-gray-800 mb-4">Organization Overview</h2>
             <p className="text-gray-500 mb-6">Sort machines by recency, name, or type from the sidebar. Select any snapshot to inspect full details.</p>
