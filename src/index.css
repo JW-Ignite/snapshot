@@ -2,15 +2,15 @@
 
 /* COLOR PALETTE */
 :root {
-  --peach: #FFA987;
-  --coral: #D15A5F;
-  --crimson: #A30B37;
-  --magenta: #982E69;
-  --purple: #8D519B;
-  --lavender: #9EAFF7;
-  --blue: #7696FF;
-  --sage: #81A094;
-  --green: #5EC784;
+  --peach: #FF8C42;
+  --coral: #FF6B6B;
+  --crimson: #E74C3C;
+  --magenta: #E91E63;
+  --purple: #9C27B0;
+  --lavender: #7986CB;
+  --blue: #3F51B5;
+  --sage: #4CAF50;
+  --green: #8BC34A;
 }
 
 /* RESET */
@@ -243,17 +243,17 @@ section h3 {
 }
 
 .btn-danger {
-  background: #E53935;
+  background: #F44336;
   color: white;
 }
 
 .btn-danger:hover {
-  background: #C62828;
+  background: #D32F2F;
   transform: translateY(-2px);
 }
 
 .btn-upload {
-  background: linear-gradient(135deg, var(--green), #45b575);
+  background: linear-gradient(135deg, var(--green), #66BB6A);
   color: white;
 }
 
@@ -501,9 +501,9 @@ section h3 {
 }
 
 .setting-status.status-on {
-  color: #2ecc71;
-  border-color: #2ecc71;
-  background: #f0fff5;
+  color: var(--green);
+  border-color: var(--green);
+  background: #e8f5e8;
 }
 
 /* Test selector in settings */
@@ -559,7 +559,7 @@ section h3 {
 }
 
 .toggle-switch input:checked + .toggle-slider {
-  background: #667eea;
+  background: var(--blue);
 }
 
 .toggle-switch input:checked + .toggle-slider::before {
