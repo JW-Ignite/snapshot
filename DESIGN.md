@@ -128,3 +128,26 @@ After a delta comparison is run, the app displays structured results in four pan
 **Phase 4 — Security and Autentication** 
 - Clear policies in rules on database tables
 - Distinct routing from company to clients
+
+---
+
+## 7. Feature Board (Organization & Dashboard)
+
+These are active ideas for organizing company computers and snapshots in the web dashboard. Team members can add to this list as new needs appear.
+
+**In Progress**
+- Machine organization controls in dashboard sidebar:
+   - Sort by most recent update
+   - Sort by machine name
+   - Sort by inferred machine type (Laptop/Desktop/Server/VM)
+
+**Ready Next**
+- Add machine tags (team, environment, risk level)
+- Add stale machine warnings when a machine has no recent snapshot (example: 7+ days)
+- Add saved dashboard views per user (persisted filter + sorting preferences)
+- Add "Only changed since last snapshot" view for quick triage
+
+**Future Ideas**
+- Auto-group machines by organization unit
+- Export machine inventory and health summary as CSV
+- Machine ownership and assignment metadata (primary owner, contact)

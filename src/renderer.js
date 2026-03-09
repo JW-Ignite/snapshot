@@ -58,7 +58,55 @@ function buildUI() {
       <header>
         <h1> System Snapshot Viewer</h1>
         <p class="subtitle">View and manage system snapshots</p>
+        <div class="header-row">
+          <div>
+            <h1>📸 System Snapshot Viewer</h1>
+            <p class="subtitle">View and manage system snapshots</p>
+          </div>
+          <button id="settingsBtn" class="btn btn-settings" title="Settings">⚙️</button>
+        </div>
       </header>
+
+      <div id="settingsPanel" class="settings-panel" style="display: none;">
+        <div class="settings-content">
+          <div class="settings-header">
+            <h3>⚙️ Settings</h3>
+            <button id="closeSettingsBtn" class="btn btn-close-settings">✕</button>
+          </div>
+          <div class="settings-body">
+            <div class="setting-item">
+              <label class="setting-label">
+                <span>Automatic Snapshots</span>
+                <div class="toggle-switch">
+                  <input type="checkbox" id="autoSnapshotToggle" />
+                  <span class="toggle-slider"></span>
+                </div>
+              </label>
+              <p class="setting-desc">Automatically take snapshots at a regular interval</p>
+            </div>
+            <div class="setting-item">
+              <label class="setting-label" for="autoSnapshotInterval">
+                <span>Interval (minutes)</span>
+                <input type="number" id="autoSnapshotInterval" class="input-field setting-input" min="1" max="1440" value="5" />
+              </label>
+              <p class="setting-desc">How often to take automatic snapshots (1–1440 min)</p>
+            </div>
+            <div id="autoSnapshotStatus" class="setting-status">Auto-snapshots: Off</div>
+            <div class="setting-item">
+              <p class="setting-label"><span>Include in snapshot:</span></p>
+              <div class="test-selector">
+                <label class="test-option"><input type="checkbox" id="test-cpu"       checked> 💻 CPU &amp; OS</label>
+                <label class="test-option"><input type="checkbox" id="test-memory"    checked> 🧠 Memory</label>
+                <label class="test-option"><input type="checkbox" id="test-processes" checked> ⚙️ Processes</label>
+                <label class="test-option"><input type="checkbox" id="test-network"   checked> 🌐 Network</label>
+                <label class="test-option"><input type="checkbox" id="test-disk"      checked> 💾 Disk &amp; FS</label>
+                <label class="test-option"><input type="checkbox" id="test-users"     checked> 👤 Users</label>
+              </div>
+              <p class="setting-desc">Select which categories to collect in snapshots</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div class="main-content">
         <div class="sidebar">
@@ -71,11 +119,19 @@ function buildUI() {
               id="snapshotName" 
               placeholder="Enter snapshot name..." 
               class="input-field"
+              style="margin-bottom: 10px;"
             />
+
+            <button id="newSnapshotBtn" class="btn btn-primary">
+              📷 Take Snapshot
+            </button>
           </div>
 
           <div class="snapshot-list-container">
-            <h2>Saved Snapshots</h2>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+              <h2 style="margin:0;">Saved Snapshots</h2>
+              <button id="wipeAllBtn" class="btn btn-danger" style="font-size:11px; padding:5px 10px;" title="Delete all snapshots">Wipe All</button>
+            </div>
             <div id="snapshotList" class="snapshot-list">
               <p class="loading">Loading snapshots...</p>
             </div>
@@ -93,6 +149,7 @@ function buildUI() {
                 <h2 id="detailTitle">Snapshot Details</h2>
                 <p id="detailTimestamp" class="timestamp"></p>
                 <div id="integrityInfo" class="integrity-info"></div>
+                <div id="testsRunBadges" class="tests-run-badges"></div>
               </div>
               <div class="header-buttons">
                 <select id="compareSelect" class="input-field" style="max-width: 200px;">
@@ -233,6 +290,16 @@ function initializeApp() {
   integrityInfo = document.getElementById('integrityInfo');
   uploadBtn = document.getElementById('uploadBtn');
 
+  // Test selector checkboxes
+  const testCheckboxes = {
+    cpu:       document.getElementById('test-cpu'),
+    memory:    document.getElementById('test-memory'),
+    processes: document.getElementById('test-processes'),
+    network:   document.getElementById('test-network'),
+    disk:      document.getElementById('test-disk'),
+    users:     document.getElementById('test-users'),
+  };
+
   console.log('DOM elements retrieved');
   console.log('newSnapshotBtn:', !!newSnapshotBtn);
   console.log('snapshotList:', !!snapshotList);
@@ -250,15 +317,60 @@ function initializeApp() {
   });
 
   // Event Listeners
-  newSnapshotBtn.addEventListener('click', () => {
-    const name = snapshotNameInput.value.trim() || `snapshot_${Date.now()}`;
-    takeNewSnapshot(name);
-    snapshotNameInput.value = '';
-  });
+newSnapshotBtn.addEventListener('click', () => {
+  const now = new Date();
+
+  // Replaced colons with hyphens and the space with an underscore
+  const formatted =
+    now.getFullYear() + '-' +
+    String(now.getMonth() + 1).padStart(2, '0') + '-' +
+    String(now.getDate()).padStart(2, '0') + '_' +
+    String(now.getHours()).padStart(2, '0') + '-' +
+    String(now.getMinutes()).padStart(2, '0') + '-' +
+    String(now.getSeconds()).padStart(2, '0');
+
+  const name = snapshotNameInput.value.trim() || "snapshot_" + formatted;
+
+  // Read which categories are selected
+  const tests = {
+    cpu:       testCheckboxes.cpu?.checked       ?? true,
+    memory:    testCheckboxes.memory?.checked    ?? true,
+    processes: testCheckboxes.processes?.checked ?? true,
+    network:   testCheckboxes.network?.checked   ?? true,
+    disk:      testCheckboxes.disk?.checked      ?? true,
+    users:     testCheckboxes.users?.checked     ?? true,
+  };
+
+  // Require at least one test to be selected
+  if (!Object.values(tests).some(Boolean)) {
+    alert('Please select at least one category to include in the snapshot.');
+    return;
+  }
+
+  takeNewSnapshot(name, tests);
+  snapshotNameInput.value = '';
+});
 
   if (deleteBtn) deleteBtn.addEventListener('click', () => {
     if (currentSnapshot) {
       deleteSnapshot(currentSnapshot);
+    }
+  });
+
+  const wipeAllBtn = document.getElementById('wipeAllBtn');
+  if (wipeAllBtn) wipeAllBtn.addEventListener('click', async () => {
+    const count = allSnapshots.length;
+    if (count === 0) { alert('No snapshots to delete.'); return; }
+    if (!confirm(`Are you sure you want to permanently delete all ${count} snapshot(s)? This cannot be undone.`)) return;
+    const result = await ipcRenderer.invoke('wipe-all-snapshots');
+    if (result.success) {
+      currentSnapshot = null;
+      await loadSnapshotList();
+      emptyState.style.display = 'flex';
+      snapshotDetail.style.display = 'none';
+      alert(`✅ Deleted ${result.count} snapshot(s).`);
+    } else {
+      alert(`❌ Error: ${result.error}`);
     }
   });
 
@@ -299,6 +411,66 @@ function initializeApp() {
   });
 
   console.log('Event listeners attached');
+
+  // --- Settings panel ---
+  const settingsBtn = document.getElementById('settingsBtn');
+  const settingsPanel = document.getElementById('settingsPanel');
+  const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+  const autoSnapshotToggle = document.getElementById('autoSnapshotToggle');
+  const autoSnapshotIntervalInput = document.getElementById('autoSnapshotInterval');
+  const autoSnapshotStatus = document.getElementById('autoSnapshotStatus');
+
+  function updateStatusText(enabled, minutes) {
+    autoSnapshotStatus.textContent = enabled
+      ? `Auto-snapshots: On (every ${minutes} min)`
+      : 'Auto-snapshots: Off';
+    autoSnapshotStatus.className = 'setting-status ' + (enabled ? 'status-on' : '');
+  }
+
+  // Load current settings from main process
+  (async () => {
+    try {
+      const settings = await ipcRenderer.invoke('get-auto-snapshot-settings');
+      autoSnapshotToggle.checked = settings.enabled;
+      autoSnapshotIntervalInput.value = settings.minutes;
+      updateStatusText(settings.enabled, settings.minutes);
+    } catch (e) { console.error('Failed to load settings:', e); }
+  })();
+
+  settingsBtn.addEventListener('click', () => {
+    settingsPanel.style.display = settingsPanel.style.display === 'none' ? 'block' : 'none';
+  });
+
+  closeSettingsBtn.addEventListener('click', () => {
+    settingsPanel.style.display = 'none';
+  });
+
+  autoSnapshotToggle.addEventListener('change', async () => {
+    const enabled = autoSnapshotToggle.checked;
+    const minutes = parseInt(autoSnapshotIntervalInput.value, 10) || 5;
+    if (enabled) {
+      await ipcRenderer.invoke('start-auto-snapshot', minutes);
+    } else {
+      await ipcRenderer.invoke('stop-auto-snapshot');
+    }
+    updateStatusText(enabled, minutes);
+  });
+
+  autoSnapshotIntervalInput.addEventListener('change', async () => {
+    let minutes = parseInt(autoSnapshotIntervalInput.value, 10);
+    if (!minutes || minutes < 1) minutes = 1;
+    if (minutes > 1440) minutes = 1440;
+    autoSnapshotIntervalInput.value = minutes;
+    await ipcRenderer.invoke('set-auto-snapshot-interval', minutes);
+    if (autoSnapshotToggle.checked) {
+      updateStatusText(true, minutes);
+    }
+  });
+
+  // Refresh list when an auto-snapshot is taken
+  ipcRenderer.on('snapshot-taken', () => {
+    loadSnapshotList();
+  });
 
   // Load snapshots on startup
   console.log('Loading snapshot list...');
@@ -378,24 +550,48 @@ function displaySnapshot(data) {
     `;
   }
 
+  // Display which tests were run as badges
+  const badgesEl = document.getElementById('testsRunBadges');
+  if (badgesEl) {
+    const run = data.metadata?.tests_run;
+    if (run) {
+      const labels = { cpu: '💻 CPU & OS', memory: '🧠 Memory', processes: '⚙️ Processes', network: '🌐 Network', disk: '💾 Disk', users: '👤 Users' };
+      badgesEl.innerHTML = Object.entries(labels).map(([key, label]) =>
+        `<span class="test-badge ${run[key] ? 'badge-on' : 'badge-off'}">${label}</span>`
+      ).join('');
+    } else {
+      // Older snapshot captured before tests_run metadata existed — assume all ran
+      badgesEl.innerHTML = '<span class="test-badge badge-on">All categories</span>';
+    }
+  }
+
   // System info
-  document.getElementById('cpuManufacturer').textContent = data.system.cpu_manufacturer || 'N/A';
-  document.getElementById('cpuBrand').textContent = data.system.cpu_brand || 'N/A';
-  document.getElementById('cpuCores').textContent = data.system.cpu_cores || 'N/A';
-  document.getElementById('totalMemory').textContent = `${data.system.total_memory_gb} GB (${data.system.used_memory_gb} GB used)`;
-  document.getElementById('osInfo').textContent = `${data.system.os_distro || 'N/A'} (${data.system.os_release || 'N/A'})`;
-  document.getElementById('diskInfo').textContent = `${data.system.total_disk_size_gb} GB`;
+  const run = data.metadata?.tests_run || {};
+  const skipped = (msg) => `<span style="color:#bbb;font-style:italic;font-size:13px;">— ${msg} —</span>`;
+
+  document.getElementById('cpuManufacturer').textContent = data.system.cpu_manufacturer || (run.cpu === false ? 'Not collected' : 'N/A');
+  document.getElementById('cpuBrand').textContent = data.system.cpu_brand || (run.cpu === false ? 'Not collected' : 'N/A');
+  document.getElementById('cpuCores').textContent = data.system.cpu_cores || (run.cpu === false ? 'Not collected' : 'N/A');
+  document.getElementById('totalMemory').textContent = run.memory === false
+    ? 'Not collected'
+    : `${data.system.total_memory_gb} GB (${data.system.used_memory_gb} GB used)`;
+  document.getElementById('osInfo').textContent = run.cpu === false
+    ? 'Not collected'
+    : `${data.system.os_distro || 'N/A'} (${data.system.os_release || 'N/A'})`;
+  document.getElementById('diskInfo').textContent = run.disk === false
+    ? 'Not collected'
+    : `${data.system.total_disk_size_gb} GB`;
 
   // Network Interfaces
   const networkInterfaces = document.getElementById('networkInterfaces');
   networkInterfaces.innerHTML = '';
-  if (data.network && data.network.interfaces) {
+  if (run.network === false) {
+    networkInterfaces.innerHTML = skipped('Network not collected');
+  } else if (data.network && data.network.interfaces) {
     data.network.interfaces.slice(0, 5).forEach(iface => {
       const item = document.createElement('div');
       item.className = 'detail-item';
-      item.innerHTML = `
-        <strong>${iface.iface}</strong>: ${iface.ip4 || 'N/A'} (${iface.type || 'N/A'})
-      `;
+      item.innerHTML = `<strong>${iface.iface}</strong>: ${iface.ip4 || 'N/A'} (${iface.type || 'N/A'})`;
       networkInterfaces.appendChild(item);
     });
   }
@@ -403,13 +599,13 @@ function displaySnapshot(data) {
   // Listening Ports
   const listeningPorts = document.getElementById('listeningPorts');
   listeningPorts.innerHTML = '';
-  if (data.network && data.network.listening_ports) {
+  if (run.network === false) {
+    listeningPorts.innerHTML = skipped('Network not collected');
+  } else if (data.network && data.network.listening_ports) {
     data.network.listening_ports.slice(0, 10).forEach(port => {
       const item = document.createElement('div');
       item.className = 'detail-item';
-      item.innerHTML = `
-        <strong>${port.process_name || 'Unknown'}</strong>: ${port.protocol.toUpperCase()} ${port.local_port}
-      `;
+      item.innerHTML = `<strong>${port.process_name || 'Unknown'}</strong>: ${port.protocol.toUpperCase()} ${port.local_port}`;
       listeningPorts.appendChild(item);
     });
   }
@@ -417,19 +613,23 @@ function displaySnapshot(data) {
   // File System Info
   const filesystemInfo = document.getElementById('filesystemInfo');
   filesystemInfo.innerHTML = '';
-  if (data.system && data.system.filesystem_info) {
+  if (run.disk === false) {
+    filesystemInfo.innerHTML = skipped('Disk & filesystem not collected');
+  } else if (data.system && data.system.filesystem_info) {
     data.system.filesystem_info.slice(0, 5).forEach(fs => {
       const item = document.createElement('div');
       item.className = 'detail-item';
-      item.innerHTML = `
-        <strong>${fs.mount}</strong>: ${fs.used_gb}GB / ${fs.size_gb}GB (${fs.use_percent}% used)
-      `;
+      item.innerHTML = `<strong>${fs.mount}</strong>: ${fs.used_gb}GB / ${fs.size_gb}GB (${fs.use_percent}% used)`;
       filesystemInfo.appendChild(item);
     });
   }
 
   // Processes
-  renderProcesses(data.running_processes);
+  if (run.processes === false) {
+    processList.innerHTML = skipped('Processes not collected in this snapshot');
+  } else {
+    renderProcesses(data.running_processes);
+  }
 }
 
 // Render processes list
@@ -466,7 +666,7 @@ function filterProcesses(query) {
 }
 
 // Take a new snapshot
-async function takeNewSnapshot(name) {
+async function takeNewSnapshot(name, tests = {}) {
   if (!ipcRenderer) {
     console.error('ipcRenderer not available!');
     alert('IPC not available. Please check console.');
@@ -477,7 +677,7 @@ async function takeNewSnapshot(name) {
   newSnapshotBtn.textContent = '⏳ Taking snapshot...';
   
   try {
-    const data = await ipcRenderer.invoke('take-snapshot', name);
+    const data = await ipcRenderer.invoke('take-snapshot', name, tests);
     if (data) {
       await loadSnapshotList();
       await loadSnapshot(name);
@@ -487,7 +687,7 @@ async function takeNewSnapshot(name) {
     alert('Error taking snapshot. Check console for details.');
   } finally {
     newSnapshotBtn.disabled = false;
-    newSnapshotBtn.textContent = '📷 Take New Snapshot';
+    newSnapshotBtn.textContent = '📷 Take Snapshot';
   }
 }
 
@@ -518,6 +718,23 @@ async function performComparison(baselineName, afterName) {
   console.log(`Comparing ${baselineName} with ${afterName}...`);
   
   try {
+    // Warn if the two snapshots collected different categories
+    const [baselineData, afterData] = await Promise.all([
+      ipcRenderer.invoke('load-snapshot', baselineName),
+      ipcRenderer.invoke('load-snapshot', afterName),
+    ]);
+
+    const baselineRun = baselineData?.metadata?.tests_run;
+    const afterRun = afterData?.metadata?.tests_run;
+    if (baselineRun && afterRun) {
+      const mismatched = Object.keys(baselineRun).filter(k => baselineRun[k] !== afterRun[k]);
+      if (mismatched.length > 0) {
+        const labels = { cpu: 'CPU & OS', memory: 'Memory', processes: 'Processes', network: 'Network', disk: 'Disk', users: 'Users' };
+        const names = mismatched.map(k => labels[k] || k).join(', ');
+        alert(`⚠️ Warning: These snapshots collected different categories (${names}). Comparison results may be incomplete or misleading.`);
+      }
+    }
+
     const comparison = await ipcRenderer.invoke('compare-snapshots', baselineName, afterName);
     
     if (comparison) {

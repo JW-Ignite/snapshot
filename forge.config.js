@@ -32,6 +32,9 @@ module.exports = {
     {
       name: '@electron-forge/plugin-webpack',
       config: {
+        // Keep Electron renderer dev server off port 3000 so it can run
+        // alongside the Next.js admin dashboard.
+        port: 3005,
         mainConfig: './webpack.main.config.js',
         renderer: {
           config: './webpack.renderer.config.js',

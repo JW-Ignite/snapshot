@@ -9,6 +9,9 @@ const http = require('http');
 // Load .env file from the project root
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 
+const DEFAULT_SNAPSHOT_SERVER_URL = 'http://localhost:3000';
+const DEFAULT_SNAPSHOT_API_KEY = 'sb_publishable_4cRWlmo693rt6aPU8Tmqjg_ZDnfLWJV';
+
 // Helper: make an HTTP/HTTPS request (no fetch in older Node)
 function makeRequest(url, options, body) {
   return new Promise((resolve, reject) => {
@@ -28,33 +31,46 @@ function makeRequest(url, options, body) {
 }
 
 // 1. The Snapshot Function
-async function takeSnapshot(filename) {
+async function takeSnapshot(filename, tests = {}) {
+  // Default every category to true so existing callers still work
+  const run = {
+    cpu:       tests.cpu       ?? true,
+    memory:    tests.memory    ?? true,
+    processes: tests.processes ?? true,
+    network:   tests.network   ?? true,
+    disk:      tests.disk      ?? true,
+    users:     tests.users     ?? true,
+  };
+
+  console.log('Tests to run:', run);
+
   try {
     console.log(`Taking snapshot: ${filename}...`);
     
-    // Grab comprehensive system data
+    // Grab only the requested data categories
     console.log('Fetching CPU info...');
-    const cpu = await si.cpu();
+    const cpu = run.cpu ? await si.cpu() : {};
     console.log('Fetching memory info...');
-    const mem = await si.mem();
+    const mem = run.memory ? await si.mem() : {};
+    
     console.log('Fetching processes...');
-    const processes = await si.processes();
-    console.log(`Found ${processes.list.length} processes`);
+    const processes = run.processes ? await si.processes() : { list: [] };
+    if (run.processes) console.log(`Found ${processes.list.length} processes`);
     
     console.log('Fetching network interfaces...');
-    const networkInterfaces = await si.networkInterfaces();
+    const networkInterfaces = run.network ? await si.networkInterfaces() : [];
     console.log('Fetching network stats...');
-    const networkStats = await si.networkStats();
+    const networkStats = run.network ? await si.networkStats() : [];
     console.log('Fetching open connections...');
-    const networkConnections = await si.networkConnections();
+    const networkConnections = run.network ? await si.networkConnections() : [];
     console.log('Fetching disk layout...');
-    const diskLayout = await si.diskLayout();
+    const diskLayout = run.disk ? await si.diskLayout() : [];
     console.log('Fetching file system size...');
-    const fsSize = await si.fsSize();
+    const fsSize = run.disk ? await si.fsSize() : [];
     console.log('Fetching OS info...');
-    const osInfo = await si.osInfo();
+    const osInfo = run.cpu ? await si.osInfo() : {};
     console.log('Fetching users...');
-    const users = await si.users();
+    const users = run.users ? await si.users() : [];
 
     // Format it into a comprehensive JSON object
     const snapshotData = {
@@ -63,7 +79,8 @@ async function takeSnapshot(filename) {
         timestamp: new Date().toISOString(),
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         snapshot_version: '2.0',
-        data_collection_method: 'systeminformation library'
+        data_collection_method: 'systeminformation library',
+        tests_run: run
       },
       system: {
         // CPU Info
@@ -183,8 +200,9 @@ async function takeSnapshot(filename) {
 }
 
 // 2. Set up the Electron Window (Standard Boilerplate)
+let mainWindow = null;
 const createWindow = () => {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1000,
     height: 700,
     webPreferences: {
@@ -197,8 +215,8 @@ const createWindow = () => {
 };
 
 // 4. Set up IPC handlers to communicate with renderer
-ipcMain.handle('take-snapshot', async (event, filename) => {
-  return await takeSnapshot(filename);
+ipcMain.handle('take-snapshot', async (event, filename, tests) => {
+  return await takeSnapshot(filename, tests);
 });
 
 ipcMain.handle('list-snapshots', async (event) => {
@@ -232,6 +250,26 @@ ipcMain.handle('delete-snapshot', async (event, filename) => {
     console.error("Error deleting snapshot:", e);
     return false;
   }
+});
+
+ipcMain.handle('wipe-all-snapshots', async () => {
+  try {
+    const snapshotDir = app.getPath('userData');
+    const files = fs.readdirSync(snapshotDir).filter(f => f.endsWith('.json'));
+    for (const file of files) {
+      fs.unlinkSync(path.join(snapshotDir, file));
+    }
+    return { success: true, count: files.length };
+  } catch (e) {
+    console.error("Error wiping snapshots:", e);
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('open-snapshot-folder', async () => {
+  const { shell } = require('electron');
+  const snapshotDir = app.getPath('userData');
+  shell.openPath(snapshotDir);
 });
 
 ipcMain.handle('compare-snapshots', async (event, baselineName, afterName) => {
@@ -291,47 +329,83 @@ ipcMain.handle('compare-snapshots', async (event, baselineName, afterName) => {
 });
 
 ipcMain.handle('upload-snapshot', async (event, filename) => {
-  try {
-    const serverUrl = process.env.SNAPSHOT_SERVER_URL;
-    const apiKey = process.env.SNAPSHOT_API_KEY;
-    const machineId = process.env.MACHINE_ID || require('os').hostname();
-    const machineName = process.env.MACHINE_NAME || require('os').hostname();
+  let snapshotId = null;
 
-    if (!serverUrl || !apiKey) {
-      return { success: false, error: 'SNAPSHOT_SERVER_URL and SNAPSHOT_API_KEY env vars not set' };
-    }
+  const withStatus = (baseData, status, errorMessage = null) => {
+    const safeBase = baseData && typeof baseData === 'object' ? baseData : {};
+    const baseMetadata = safeBase.metadata && typeof safeBase.metadata === 'object'
+      ? safeBase.metadata
+      : {};
 
-    // Load the local snapshot
-    const snapshotPath = path.join(app.getPath('userData'), `${filename}.json`);
-    const data = JSON.parse(fs.readFileSync(snapshotPath, 'utf-8'));
+    return {
+      ...safeBase,
+      metadata: {
+        ...baseMetadata,
+        snapshot_status: status,
+        error: errorMessage,
+        status_updated_at: new Date().toISOString(),
+      },
+    };
+  };
 
-    const body = JSON.stringify([
-      {
-        machine_id: machineId,
-        machine_name: machineName,
-        snapshot_name: filename,
-        timestamp: data.metadata?.timestamp,
-        data
-      }
-    ]);
-    const url = new URL('/rest/v1/snapshots', serverUrl);
+  const createSnapshotRow = async (serverUrl, apiKey, payload) => {
+    const body = JSON.stringify(payload);
+    const url = new URL('/api/snapshots', serverUrl);
 
     const result = await makeRequest(url.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'apikey': apiKey,
-        'Authorization': `Bearer ${apiKey}`,
-        'Prefer': 'return=representation',
+        'x-api-key': apiKey,
         'Content-Length': Buffer.byteLength(body)
       }
     }, body);
 
-    if (result.status === 201 || result.status === 200) {
-      return { success: true, id: result.body[0]?.id };
-    } else {
-      return { success: false, error: result.body?.message || result.body?.error || `HTTP ${result.status}` };
+    return result;
+  };
+
+  const updateSnapshotRow = async (serverUrl, apiKey, id, payload) => {
+    const body = JSON.stringify(payload);
+    const url = new URL(`/api/snapshots/${id}`, serverUrl);
+
+    return makeRequest(url.toString(), {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'Content-Length': Buffer.byteLength(body)
+      }
+    }, body);
+  };
+
+  try {
+    const serverUrl = process.env.SNAPSHOT_SERVER_URL || DEFAULT_SNAPSHOT_SERVER_URL;
+    const apiKey = process.env.SNAPSHOT_API_KEY || DEFAULT_SNAPSHOT_API_KEY;
+    const machineId = process.env.MACHINE_ID || require('os').hostname();
+    const machineName = process.env.MACHINE_NAME || require('os').hostname();
+
+    // Load the local snapshot
+    const snapshotPath = path.join(app.getPath('userData'), `${filename}.json`);
+    const data = JSON.parse(fs.readFileSync(snapshotPath, 'utf-8'));
+
+    const completedData = withStatus(data, 'Completed');
+
+    // Upload in a single POST with the full snapshot data
+    const payload = {
+      machine_id: machineId,
+      machine_name: machineName,
+      snapshot_name: filename,
+      data: completedData,
+    };
+
+    const result = await createSnapshotRow(serverUrl, apiKey, payload);
+
+    if (result.status === 200 || result.status === 201) {
+      snapshotId = result.body?.id;
+      return { success: true, id: snapshotId };
     }
+
+    return { success: false, error: result.body?.error || result.body?.message || `HTTP ${result.status}` };
   } catch (e) {
     console.error('Error uploading snapshot:', e);
     return { success: false, error: e.message };
@@ -340,8 +414,8 @@ ipcMain.handle('upload-snapshot', async (event, filename) => {
 
 ipcMain.handle('list-remote-snapshots', async (event) => {
   try {
-    const serverUrl = process.env.SNAPSHOT_SERVER_URL;
-    const apiKey = process.env.SNAPSHOT_API_KEY;
+    const serverUrl = process.env.SNAPSHOT_SERVER_URL || DEFAULT_SNAPSHOT_SERVER_URL;
+    const apiKey = process.env.SNAPSHOT_API_KEY || DEFAULT_SNAPSHOT_API_KEY;
 
     if (!serverUrl || !apiKey) return [];
 
@@ -360,11 +434,74 @@ ipcMain.handle('list-remote-snapshots', async (event) => {
   }
 });
 
+let autoSnapshotInterval = null;
+let autoSnapshotMinutes = 5;
+let autoSnapshotEnabled = false;
+
+function formatSnapshotTimestamp() {
+  const now = new Date();
+  return now.getFullYear() + '-' +
+    String(now.getMonth() + 1).padStart(2, '0') + '-' +
+    String(now.getDate()).padStart(2, '0') + '_' +
+    String(now.getHours()).padStart(2, '0') + '-' +
+    String(now.getMinutes()).padStart(2, '0') + '-' +
+    String(now.getSeconds()).padStart(2, '0');
+}
+
+function startAutoSnapshot(minutes) {
+  if (minutes !== undefined) {
+    autoSnapshotMinutes = minutes;
+  }
+  stopAutoSnapshot();
+  autoSnapshotEnabled = true;
+
+  // Take one immediately on start
+  takeSnapshot(`snapshot_${formatSnapshotTimestamp()}_auto`)
+    .then(() => { if (mainWindow) mainWindow.webContents.send('snapshot-taken'); })
+    .catch(e => console.error('Auto-snapshot failed:', e.message));
+
+  autoSnapshotInterval = setInterval(async () => {
+    try {
+      await takeSnapshot(`snapshot_${formatSnapshotTimestamp()}_auto`);
+      if (mainWindow) mainWindow.webContents.send('snapshot-taken');
+    } catch (e) {
+      console.error('Auto-snapshot failed:', e.message);
+    }
+  }, autoSnapshotMinutes * 60 * 1000);
+}
+
+function stopAutoSnapshot() {
+  if (autoSnapshotInterval) {
+    clearInterval(autoSnapshotInterval);
+    autoSnapshotInterval = null;
+  }
+  autoSnapshotEnabled = false;
+}
+
+ipcMain.handle('start-auto-snapshot', (event, minutes) => {
+  startAutoSnapshot(minutes);
+  return true;
+});
+
+ipcMain.handle('stop-auto-snapshot', () => {
+  stopAutoSnapshot();
+  return true;
+});
+
+ipcMain.handle('set-auto-snapshot-interval', (event, minutes) => {
+  autoSnapshotMinutes = minutes;
+  if (autoSnapshotInterval) {
+    startAutoSnapshot(); // restart with new interval
+  }
+  return true;
+});
+
+ipcMain.handle('get-auto-snapshot-settings', () => {
+  return { enabled: autoSnapshotEnabled, minutes: autoSnapshotMinutes };
+});
+
 // 3. Run the app and test our function
 app.whenReady().then(() => {
   createWindow();
-  
-  // For testing: Let's take the "Before" snapshot immediately when the app starts
-  // Commented out for now - we'll take snapshots from the UI
-  // takeSnapshot('baseline_before_install');
 });
+
