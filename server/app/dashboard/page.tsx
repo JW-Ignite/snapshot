@@ -283,7 +283,7 @@ export default function Dashboard() {
       {/* Sidebar */}
       <div className="w-80 bg-white border-r overflow-y-auto flex flex-col">
         <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
-          <h1 className="text-xl font-bold">📸 Snapshot Server</h1>
+          <h1 className="text-xl font-bold">Snapshot Server</h1>
           <p className="text-sm opacity-80">Multi-machine dashboard</p>
           <Link
             href="/dashboard/engineer"
@@ -339,6 +339,9 @@ export default function Dashboard() {
 
         {visibleMachines.map(machine => {
           return (
+            <div key={machineId} className="border-b">
+              <div className="px-4 py-2 bg-gray-50 font-semibold text-sm text-gray-600 uppercase tracking-wide">
+                {machineName}
             <div key={machine.machineId} className="border-b">
               <div className="px-4 py-2 bg-gray-50">
                 <div className="font-semibold text-sm text-gray-700 tracking-wide">
@@ -387,6 +390,8 @@ export default function Dashboard() {
       {/* Main content */}
       <div className="flex-1 overflow-y-auto">
         {!selected ? (
+          <div className="flex items-center justify-center h-full text-gray-400 text-lg">
+            Select a snapshot to view details
           <div className="p-8">
             <h2 className="text-2xl font-bold text-gray-800 mb-4">Organization Overview</h2>
             <p className="text-gray-500 mb-6">Sort machines by recency, name, or type from the sidebar. Select any snapshot to inspect full details.</p>
@@ -416,11 +421,11 @@ export default function Dashboard() {
               <div>
                 <h2 className="text-2xl font-bold text-gray-800">{selected.snapshot_name}</h2>
                 <p className="text-gray-400 text-sm mt-1">
-                  {new Date(selected.timestamp).toLocaleString()} · 🖥️ {selected.machine_name}
+                  {new Date(selected.timestamp).toLocaleString()} · {selected.machine_name}
                 </p>
                 {selected.data?.integrity && (
                   <p className="text-xs text-gray-400 font-mono mt-1">
-                    ✓ SHA256: {selected.data.integrity.sha256_checksum.substring(0, 16)}...
+                    SHA256: {selected.data.integrity.sha256_checksum.substring(0, 16)}...
                   </p>
                 )}
               </div>
@@ -428,7 +433,7 @@ export default function Dashboard() {
 
             {/* System Info */}
             <section className="mb-8">
-              <h3 className="text-lg font-semibold text-gray-700 mb-3">💻 System Information</h3>
+              <h3 className="text-lg font-semibold text-gray-700 mb-3">System Information</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {[
                   ['CPU', `${selected.data?.system?.cpu_brand}`],
@@ -448,7 +453,7 @@ export default function Dashboard() {
 
             {/* Network */}
             <section className="mb-8">
-              <h3 className="text-lg font-semibold text-gray-700 mb-3">🌐 Listening Ports</h3>
+              <h3 className="text-lg font-semibold text-gray-700 mb-3">Listening Ports</h3>
               <div className="bg-white rounded-lg shadow-sm overflow-hidden">
                 {selected.data?.network?.listening_ports?.slice(0, 10).map((port: any, i: number) => (
                   <div key={i} className="px-4 py-2 border-b text-sm flex justify-between">
@@ -462,7 +467,7 @@ export default function Dashboard() {
             {/* Processes */}
             <section>
               <h3 className="text-lg font-semibold text-gray-700 mb-3">
-                ⚙️ Top Processes ({selected.data?.running_processes?.length} total)
+                Top Processes ({selected.data?.running_processes?.length} total)
               </h3>
               <div className="bg-white rounded-lg shadow-sm overflow-hidden">
                 {selected.data?.running_processes?.slice(0, 20).map((proc: any, i: number) => (

@@ -10,6 +10,7 @@
   --lavender: #9EAFF7;
   --blue: #7696FF;
   --sage: #81A094;
+  --green: #5EC784;
 }
 
 /* RESET */
@@ -91,7 +92,7 @@ header .subtitle {
 .snapshot-item {
   padding: 12px;
   border-radius: 12px;
-  border: 1px solid #e7e7e7;
+  border: 2px solid #e7e7e7;
   background: white;
   font-size: 14px;
   cursor: pointer;
@@ -100,9 +101,9 @@ header .subtitle {
 
 .snapshot-item:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 18px rgba(0,0,0,0.08);
-  border-color: var(--blue);
-  background: #f2f6ff;
+  box-shadow: 0 8px 18px rgba(0,0,0,0.12);
+  border-color: var(--peach);
+  background: #fff5f0;
 }
 
 .snapshot-item.active {
@@ -163,8 +164,8 @@ section h3 {
   background: white;
   border-radius: 12px;
   padding: 18px;
-  border-left: 4px solid var(--blue);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.05);
+  border-left: 4px solid var(--coral);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.08);
 }
 
 .info-item .label {
@@ -197,8 +198,8 @@ section h3 {
   border-radius: 10px;
   padding: 12px 14px;
   font-size: 13px;
-  border-left: 4px solid var(--magenta);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  border-left: 4px solid var(--peach);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 
 .process-name {
@@ -242,23 +243,23 @@ section h3 {
 }
 
 .btn-danger {
-  background: var(--crimson);
+  background: #E53935;
   color: white;
 }
 
 .btn-danger:hover {
-  background: var(--coral);
+  background: #C62828;
   transform: translateY(-2px);
 }
 
 .btn-upload {
-  background: linear-gradient(135deg, var(--sage), var(--lavender));
+  background: linear-gradient(135deg, var(--green), #45b575);
   color: white;
 }
 
 .btn-upload:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+  box-shadow: 0 8px 20px rgba(76, 175, 80, 0.35);
 }
 
 /* INPUT */
@@ -583,8 +584,8 @@ section h3 {
   border-radius: 8px;
   font-size: 12px;
   color: #333;
-  border-left: 3px solid var(--lavender);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+  border-left: 3px solid var(--blue);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
 
 .comparison-item.warning {
@@ -626,8 +627,8 @@ section h3 {
   border-radius: 8px;
   font-size: 12px;
   color: #333;
-  border-left: 3px solid var(--lavender);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+  border-left: 3px solid var(--green);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
 
 .detail-item strong {
