@@ -98,20 +98,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const { data: inserted, error } = await getSupabase()
-      .from('snapshots')
-      .insert({
-        machine_id,
-        machine_name: machine_name || machine_id,
-        snapshot_name,
-        timestamp: data.metadata?.timestamp || new Date().toISOString(),
-        data,
-        snapshot_status: extractStatus(data),
-        snapshot_size_bytes: estimateSnapshotSizeBytes(data),
-        snapshot_error: extractStatusError(data),
-      })
-      .select('id')
-      .single();
+    const { data: inserted, error } = await insertSnapshotWithSchemaFallback({
+      machine_id,
+      machine_name: machine_name || machine_id,
+      snapshot_name,
+      timestamp: data.metadata?.timestamp || new Date().toISOString(),
+      data,
+      snapshot_status: extractStatus(data),
+      snapshot_size_bytes: estimateSnapshotSizeBytes(data),
+      snapshot_error: extractStatusError(data),
+    });
 
     if (err1) {
       // Retry without the new columns in case they don't exist yet
@@ -164,17 +160,49 @@ export async function GET(req: NextRequest) {
   }
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!error) {
+    const rows = (data || []).map((row: any) => ({
+      id: row.id,
+      machine_id: row.machine_id,
+      machine_name: row.machine_name,
+      snapshot_name: row.snapshot_name,
+      timestamp: row.timestamp,
+      snapshot_size_bytes: row.snapshot_size_bytes ?? 0,
+      snapshot_status: normalizeStatus(row.snapshot_status),
+      snapshot_error: row.snapshot_error ?? null,
+    }));
 
-  const rows = (data || []).map((row: any) => ({
+    return NextResponse.json(rows);
+  }
+
+  // Backward-compatible fallback for older schemas that only store status/size in data.
+  if (!isMissingDerivedSnapshotColumnsError(error.message)) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  let legacyQuery = getSupabase()
+    .from('snapshots')
+    .select('id, machine_id, machine_name, snapshot_name, timestamp, data')
+    .order('timestamp', { ascending: false });
+
+  if (machine_id) {
+    legacyQuery = legacyQuery.eq('machine_id', machine_id);
+  }
+
+  const { data: legacyData, error: legacyError } = await legacyQuery;
+  if (legacyError) {
+    return NextResponse.json({ error: legacyError.message }, { status: 500 });
+  }
+
+  const rows = (legacyData || []).map((row: any) => ({
     id: row.id,
     machine_id: row.machine_id,
     machine_name: row.machine_name,
     snapshot_name: row.snapshot_name,
     timestamp: row.timestamp,
-    snapshot_size_bytes: row.snapshot_size_bytes ?? 0,
-    snapshot_status: normalizeStatus(row.snapshot_status),
-    snapshot_error: row.snapshot_error ?? null,
+    snapshot_size_bytes: estimateSnapshotSizeBytes(row.data),
+    snapshot_status: extractStatus(row.data),
+    snapshot_error: extractStatusError(row.data),
   }));
 
   return NextResponse.json(rows);
