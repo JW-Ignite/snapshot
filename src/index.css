@@ -634,3 +634,62 @@ section h3 {
   color: #333;
   font-weight: 600;
 }
+
+/* Tooltip question-mark icon */
+.tooltip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #d0d0d0;
+  color: #555;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: help;
+  margin-left: 4px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.tooltip-icon:hover {
+  background: #667eea;
+  color: white;
+}
+
+/* Pin button */
+.btn-pin {
+  background: #f0f0f0;
+  color: #555;
+  border: 1px solid #ccc;
+}
+
+.btn-pin:hover {
+  background: #e0e0e0;
+  transform: translateY(-2px);
+}
+
+.btn-pin.pinned {
+  background: linear-gradient(135deg, #fbc02d 0%, #f9a825 100%);
+  color: white;
+  border: 1px solid #f9a825;
+}
+
+.btn-pin.pinned:hover {
+  box-shadow: 0 4px 12px rgba(251, 192, 45, 0.4);
+  transform: translateY(-2px);
+}
+
+/* Pinned snapshot items in sidebar */
+.snapshot-item.pinned {
+  border-left: 3px solid #fbc02d;
+}
+
+.snapshot-item.pinned.active {
+  border-left: 3px solid #fff;
+}
+
+.pin-indicator {
+  font-size: 12px;
+}
