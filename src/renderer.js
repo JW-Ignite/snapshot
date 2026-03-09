@@ -139,9 +139,7 @@ function buildUI() {
               style="margin-bottom: 10px;"
             />
 
-            <button id="newSnapshotBtn" class="btn btn-primary">
-              Take Snapshot
-            </button>
+            
           </div>
 
           <div class="snapshot-list-container">
