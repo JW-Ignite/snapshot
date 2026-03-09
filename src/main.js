@@ -213,13 +213,15 @@ const createWindow = () => {
 
 // 4. Set up IPC handlers to communicate with renderer
 ipcMain.handle('take-snapshot', async (event, filename, tests) => {
-  return await takeSnapshot(filename, tests);
+  const result = await takeSnapshot(filename, tests);
+  enforceRetentionLimit();
+  return result;
 });
 
 ipcMain.handle('list-snapshots', async (event) => {
   try {
     const snapshotDir = app.getPath('userData');
-    const files = fs.readdirSync(snapshotDir).filter(f => f.endsWith('.json'));
+    const files = fs.readdirSync(snapshotDir).filter(f => f.endsWith('.json') && f !== '_snapshot_settings.json');
     return files.map(f => f.replace('.json', ''));
   } catch (e) {
     console.error("Error listing snapshots:", e);
@@ -469,6 +471,86 @@ ipcMain.handle('list-remote-snapshots', async (event) => {
 let autoSnapshotInterval = null;
 let autoSnapshotMinutes = 5;
 let autoSnapshotEnabled = false;
+let maxSnapshots = 0; // 0 = unlimited
+
+// --- Settings persistence ---
+function getSettingsPath() {
+  return path.join(app.getPath('userData'), '_snapshot_settings.json');
+}
+
+function loadSettings() {
+  try {
+    const p = getSettingsPath();
+    if (fs.existsSync(p)) {
+      const s = JSON.parse(fs.readFileSync(p, 'utf-8'));
+      maxSnapshots = s.maxSnapshots ?? 0;
+    }
+  } catch (e) { console.error('Failed to load settings:', e); }
+}
+
+function saveSettings() {
+  try {
+    fs.writeFileSync(getSettingsPath(), JSON.stringify({ maxSnapshots }));
+  } catch (e) { console.error('Failed to save settings:', e); }
+}
+
+// --- Retention enforcement ---
+function enforceRetentionLimit() {
+  if (maxSnapshots <= 0) return; // unlimited
+  try {
+    const snapshotDir = app.getPath('userData');
+    const files = fs.readdirSync(snapshotDir)
+      .filter(f => f.endsWith('.json') && f !== '_snapshot_settings.json');
+
+    // Load all snapshots and separate pinned from unpinned
+    const snapshots = files.map(f => {
+      try {
+        const data = JSON.parse(fs.readFileSync(path.join(snapshotDir, f), 'utf-8'));
+        return { file: f, data, pinned: data?.metadata?.pinned === true, timestamp: data?.metadata?.timestamp || '' };
+      } catch { return null; }
+    }).filter(Boolean);
+
+    const unpinned = snapshots.filter(s => !s.pinned);
+    // Sort unpinned by timestamp ascending (oldest first)
+    unpinned.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+    const toDelete = unpinned.length - maxSnapshots;
+    if (toDelete > 0) {
+      for (let i = 0; i < toDelete; i++) {
+        const filePath = path.join(snapshotDir, unpinned[i].file);
+        fs.unlinkSync(filePath);
+        console.log(`Retention: deleted ${unpinned[i].file}`);
+      }
+    }
+  } catch (e) { console.error('Error enforcing retention:', e); }
+}
+
+// --- Pin/unpin ---
+ipcMain.handle('set-snapshot-pinned', async (event, filename, pinned) => {
+  try {
+    const snapshotPath = path.join(app.getPath('userData'), `${filename}.json`);
+    const data = JSON.parse(fs.readFileSync(snapshotPath, 'utf-8'));
+    data.metadata.pinned = pinned;
+    fs.writeFileSync(snapshotPath, JSON.stringify(data, null, 2));
+    // Re-enforce retention in case unpinning freed a slot
+    enforceRetentionLimit();
+    return true;
+  } catch (e) {
+    console.error('Error setting pin:', e);
+    return false;
+  }
+});
+
+// --- Max snapshots ---
+ipcMain.handle('get-max-snapshots', () => maxSnapshots);
+
+ipcMain.handle('set-max-snapshots', (event, value) => {
+  maxSnapshots = value;
+  saveSettings();
+  enforceRetentionLimit();
+  if (mainWindow) mainWindow.webContents.send('snapshot-taken'); // refresh list
+  return true;
+});
 
 function formatSnapshotTimestamp() {
   const now = new Date();
@@ -489,12 +571,16 @@ function startAutoSnapshot(minutes) {
 
   // Take one immediately on start
   takeSnapshot(`snapshot_${formatSnapshotTimestamp()}_auto`)
-    .then(() => { if (mainWindow) mainWindow.webContents.send('snapshot-taken'); })
+    .then(() => {
+      enforceRetentionLimit();
+      if (mainWindow) mainWindow.webContents.send('snapshot-taken');
+    })
     .catch(e => console.error('Auto-snapshot failed:', e.message));
 
   autoSnapshotInterval = setInterval(async () => {
     try {
       await takeSnapshot(`snapshot_${formatSnapshotTimestamp()}_auto`);
+      enforceRetentionLimit();
       if (mainWindow) mainWindow.webContents.send('snapshot-taken');
     } catch (e) {
       console.error('Auto-snapshot failed:', e.message);
@@ -534,6 +620,7 @@ ipcMain.handle('get-auto-snapshot-settings', () => {
 
 // 3. Run the app and test our function
 app.whenReady().then(() => {
+  loadSettings();
   createWindow();
 });
 

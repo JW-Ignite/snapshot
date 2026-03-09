@@ -91,14 +91,21 @@ function buildUI() {
             </div>
             <div id="autoSnapshotStatus" class="setting-status">Auto-snapshots: Off</div>
             <div class="setting-item">
+              <label class="setting-label" for="maxSnapshotsInput">
+                <span>Max Snapshots to Keep</span>
+                <input type="number" id="maxSnapshotsInput" class="input-field setting-input" min="0" max="9999" value="0" />
+              </label>
+              <p class="setting-desc">Oldest unpinned snapshots are auto-deleted when this limit is exceeded. Set to 0 for unlimited.</p>
+            </div>
+            <div class="setting-item">
               <p class="setting-label"><span>Include in snapshot:</span></p>
               <div class="test-selector">
-                <label class="test-option"><input type="checkbox" id="test-cpu"       checked> 💻 CPU &amp; OS</label>
-                <label class="test-option"><input type="checkbox" id="test-memory"    checked> 🧠 Memory</label>
-                <label class="test-option"><input type="checkbox" id="test-processes" checked> ⚙️ Processes</label>
-                <label class="test-option"><input type="checkbox" id="test-network"   checked> 🌐 Network</label>
-                <label class="test-option"><input type="checkbox" id="test-disk"      checked> 💾 Disk &amp; FS</label>
-                <label class="test-option"><input type="checkbox" id="test-users"     checked> 👤 Users</label>
+                <label class="test-option"><input type="checkbox" id="test-cpu"       checked> 💻 CPU &amp; OS <span class="tooltip-icon" title="Collects CPU manufacturer, brand, core count, and operating system/distro information">?</span></label>
+                <label class="test-option"><input type="checkbox" id="test-memory"    checked> 🧠 Memory <span class="tooltip-icon" title="Collects total and used RAM, providing a snapshot of memory utilization">?</span></label>
+                <label class="test-option"><input type="checkbox" id="test-processes" checked> ⚙️ Processes <span class="tooltip-icon" title="Captures all running processes with PID, CPU usage, and memory usage">?</span></label>
+                <label class="test-option"><input type="checkbox" id="test-network"   checked> 🌐 Network <span class="tooltip-icon" title="Records network interfaces, IP addresses, and currently listening ports">?</span></label>
+                <label class="test-option"><input type="checkbox" id="test-disk"      checked> 💾 Disk &amp; FS <span class="tooltip-icon" title="Collects total disk size and filesystem mount usage statistics">?</span></label>
+                <label class="test-option"><input type="checkbox" id="test-users"     checked> 👤 Users <span class="tooltip-icon" title="Records currently logged-in users and session information">?</span></label>
               </div>
               <p class="setting-desc">Select which categories to collect in snapshots</p>
             </div>
@@ -148,6 +155,7 @@ function buildUI() {
                   <option value="">Compare with...</option>
                 </select>
                 <button id="compareBtn" class="btn btn-primary">📊 Compare</button>
+                <button id="pinBtn" class="btn btn-pin">📌 Pin</button>
                 <button id="uploadBtn" class="btn btn-upload">☁️ Upload</button>
                 <button id="deleteBtn" class="btn btn-danger">🗑️ Delete</button>
               </div>
@@ -239,6 +247,11 @@ function buildUI() {
                   <p class="loading">Loading processes...</p>
                 </div>
               </section>
+
+              <section class="users-section">
+                <h3>👤 Logged-in Users</h3>
+                <div id="usersList" class="details-list"></div>
+              </section>
             </div>
           </div>
         </div>
@@ -281,6 +294,7 @@ function initializeApp() {
   comparisonView = document.getElementById('comparisonView');
   integrityInfo = document.getElementById('integrityInfo');
   uploadBtn = document.getElementById('uploadBtn');
+  const pinBtn = document.getElementById('pinBtn');
 
   // Test selector checkboxes
   const testCheckboxes = {
@@ -360,6 +374,22 @@ newSnapshotBtn.addEventListener('click', () => {
     }
   });
 
+  if (pinBtn) pinBtn.addEventListener('click', async () => {
+    if (!currentSnapshot) return;
+    try {
+      const data = await ipcRenderer.invoke('load-snapshot', currentSnapshot);
+      const isPinned = data?.metadata?.pinned === true;
+      const result = await ipcRenderer.invoke('set-snapshot-pinned', currentSnapshot, !isPinned);
+      if (result) {
+        pinBtn.textContent = !isPinned ? '📌 Unpin' : '📌 Pin';
+        pinBtn.className = !isPinned ? 'btn btn-pin pinned' : 'btn btn-pin';
+        renderSnapshotList();
+      }
+    } catch (e) {
+      console.error('Error toggling pin:', e);
+    }
+  });
+
   if (uploadBtn) uploadBtn.addEventListener('click', async () => {
     if (!currentSnapshot) return;
     uploadBtn.disabled = true;
@@ -383,6 +413,25 @@ newSnapshotBtn.addEventListener('click', () => {
 
   if (compareSelect) compareSelect.addEventListener('change', (e) => {
     // Button is always visible - no hide/show logic needed
+  });
+
+  // --- Max snapshots setting ---
+  const maxSnapshotsInput = document.getElementById('maxSnapshotsInput');
+
+  // Load saved max-snapshots value
+  (async () => {
+    try {
+      const max = await ipcRenderer.invoke('get-max-snapshots');
+      maxSnapshotsInput.value = max;
+    } catch (e) { console.error('Failed to load max-snapshots:', e); }
+  })();
+
+  maxSnapshotsInput.addEventListener('change', async () => {
+    let val = parseInt(maxSnapshotsInput.value, 10);
+    if (isNaN(val) || val < 0) val = 0;
+    if (val > 9999) val = 9999;
+    maxSnapshotsInput.value = val;
+    await ipcRenderer.invoke('set-max-snapshots', val);
   });
 
   console.log('Event listeners attached');
@@ -456,7 +505,7 @@ newSnapshotBtn.addEventListener('click', () => {
 async function loadSnapshotList() {
   try {
     allSnapshots = await ipcRenderer.invoke('list-snapshots');
-    renderSnapshotList();
+    await renderSnapshotList();
     if (allSnapshots.length === 0) {
       snapshotList.innerHTML = '<p class="loading">No snapshots yet</p>';
     }
@@ -466,15 +515,24 @@ async function loadSnapshotList() {
 }
 
 // Render snapshot list in sidebar
-function renderSnapshotList() {
+async function renderSnapshotList() {
   snapshotList.innerHTML = '';
-  allSnapshots.forEach((name) => {
+  for (const name of allSnapshots) {
     const item = document.createElement('div');
     item.className = `snapshot-item ${name === currentSnapshot ? 'active' : ''}`;
-    item.textContent = name;
+
+    // Check if pinned
+    let isPinned = false;
+    try {
+      const data = await ipcRenderer.invoke('load-snapshot', name);
+      isPinned = data?.metadata?.pinned === true;
+    } catch (e) { /* ignore */ }
+
+    item.innerHTML = `${isPinned ? '<span class="pin-indicator">📌</span> ' : ''}${name}`;
+    if (isPinned) item.classList.add('pinned');
     item.addEventListener('click', () => loadSnapshot(name));
     snapshotList.appendChild(item);
-  });
+  }
   
   // Update comparison dropdown
   compareSelect.innerHTML = '<option value="">Compare with...</option>';
@@ -497,7 +555,7 @@ async function loadSnapshot(name) {
     if (data) {
       currentSnapshot = name;
       displaySnapshot(data);
-      renderSnapshotList();
+      await renderSnapshotList();
       
       // Reset the compare dropdown and hide button when loading new snapshot
       compareSelect.value = '';
@@ -516,6 +574,14 @@ function displaySnapshot(data) {
 
   detailTitle.textContent = currentSnapshot;
   detailTimestamp.textContent = new Date(data.metadata.timestamp).toLocaleString();
+
+  // Update pin button state
+  const pinBtnEl = document.getElementById('pinBtn');
+  if (pinBtnEl) {
+    const isPinned = data?.metadata?.pinned === true;
+    pinBtnEl.textContent = isPinned ? '📌 Unpin' : '📌 Pin';
+    pinBtnEl.className = isPinned ? 'btn btn-pin pinned' : 'btn btn-pin';
+  }
 
   // Display integrity information
   if (data.integrity) {
@@ -542,26 +608,42 @@ function displaySnapshot(data) {
 
   // System info
   const run = data.metadata?.tests_run || {};
-  const skipped = (msg) => `<span style="color:#bbb;font-style:italic;font-size:13px;">— ${msg} —</span>`;
 
-  document.getElementById('cpuManufacturer').textContent = data.system.cpu_manufacturer || (run.cpu === false ? 'Not collected' : 'N/A');
-  document.getElementById('cpuBrand').textContent = data.system.cpu_brand || (run.cpu === false ? 'Not collected' : 'N/A');
-  document.getElementById('cpuCores').textContent = data.system.cpu_cores || (run.cpu === false ? 'Not collected' : 'N/A');
-  document.getElementById('totalMemory').textContent = run.memory === false
-    ? 'Not collected'
-    : `${data.system.total_memory_gb} GB (${data.system.used_memory_gb} GB used)`;
-  document.getElementById('osInfo').textContent = run.cpu === false
-    ? 'Not collected'
-    : `${data.system.os_distro || 'N/A'} (${data.system.os_release || 'N/A'})`;
-  document.getElementById('diskInfo').textContent = run.disk === false
-    ? 'Not collected'
-    : `${data.system.total_disk_size_gb} GB`;
+  // Hide/show individual system info items based on collected categories
+  const cpuManufacturerItem = document.getElementById('cpuManufacturer').closest('.info-item');
+  const cpuBrandItem = document.getElementById('cpuBrand').closest('.info-item');
+  const cpuCoresItem = document.getElementById('cpuCores').closest('.info-item');
+  const totalMemoryItem = document.getElementById('totalMemory').closest('.info-item');
+  const osInfoItem = document.getElementById('osInfo').closest('.info-item');
+  const diskInfoItem = document.getElementById('diskInfo').closest('.info-item');
+
+  cpuManufacturerItem.style.display = run.cpu === false ? 'none' : '';
+  cpuBrandItem.style.display = run.cpu === false ? 'none' : '';
+  cpuCoresItem.style.display = run.cpu === false ? 'none' : '';
+  osInfoItem.style.display = run.cpu === false ? 'none' : '';
+  totalMemoryItem.style.display = run.memory === false ? 'none' : '';
+  diskInfoItem.style.display = run.disk === false ? 'none' : '';
+
+  // Hide the entire System Information section if all contributing categories are off
+  const systemSection = document.querySelector('.system-info');
+  systemSection.style.display = (run.cpu === false && run.memory === false && run.disk === false) ? 'none' : '';
+
+  document.getElementById('cpuManufacturer').textContent = data.system.cpu_manufacturer || 'N/A';
+  document.getElementById('cpuBrand').textContent = data.system.cpu_brand || 'N/A';
+  document.getElementById('cpuCores').textContent = data.system.cpu_cores || 'N/A';
+  document.getElementById('totalMemory').textContent = `${data.system.total_memory_gb} GB (${data.system.used_memory_gb} GB used)`;
+  document.getElementById('osInfo').textContent = `${data.system.os_distro || 'N/A'} (${data.system.os_release || 'N/A'})`;
+  document.getElementById('diskInfo').textContent = `${data.system.total_disk_size_gb} GB`;
+
+  // Network section - hide entirely if not collected
+  const networkSection = document.querySelector('.network-section');
+  networkSection.style.display = run.network === false ? 'none' : '';
 
   // Network Interfaces
   const networkInterfaces = document.getElementById('networkInterfaces');
   networkInterfaces.innerHTML = '';
   if (run.network === false) {
-    networkInterfaces.innerHTML = skipped('Network not collected');
+    // section is hidden, no need to populate
   } else if (data.network && data.network.interfaces) {
     data.network.interfaces.slice(0, 5).forEach(iface => {
       const item = document.createElement('div');
@@ -575,7 +657,7 @@ function displaySnapshot(data) {
   const listeningPorts = document.getElementById('listeningPorts');
   listeningPorts.innerHTML = '';
   if (run.network === false) {
-    listeningPorts.innerHTML = skipped('Network not collected');
+    // section is hidden, no need to populate
   } else if (data.network && data.network.listening_ports) {
     data.network.listening_ports.slice(0, 10).forEach(port => {
       const item = document.createElement('div');
@@ -585,11 +667,14 @@ function displaySnapshot(data) {
     });
   }
 
-  // File System Info
+  // File System section - hide entirely if not collected
+  const filesystemSection = document.querySelector('.filesystem-section');
+  filesystemSection.style.display = run.disk === false ? 'none' : '';
+
   const filesystemInfo = document.getElementById('filesystemInfo');
   filesystemInfo.innerHTML = '';
   if (run.disk === false) {
-    filesystemInfo.innerHTML = skipped('Disk & filesystem not collected');
+    // section is hidden, no need to populate
   } else if (data.system && data.system.filesystem_info) {
     data.system.filesystem_info.slice(0, 5).forEach(fs => {
       const item = document.createElement('div');
@@ -599,11 +684,29 @@ function displaySnapshot(data) {
     });
   }
 
-  // Processes
-  if (run.processes === false) {
-    processList.innerHTML = skipped('Processes not collected in this snapshot');
-  } else {
+  // Processes section - hide entirely if not collected
+  const processesSection = document.querySelector('.processes-section');
+  processesSection.style.display = run.processes === false ? 'none' : '';
+
+  if (run.processes !== false) {
     renderProcesses(data.running_processes);
+  }
+
+  // Users section - hide entirely if not collected
+  const usersSection = document.querySelector('.users-section');
+  usersSection.style.display = run.users === false ? 'none' : '';
+
+  const usersList = document.getElementById('usersList');
+  usersList.innerHTML = '';
+  if (run.users !== false && data.users && data.users.length > 0) {
+    data.users.forEach(u => {
+      const item = document.createElement('div');
+      item.className = 'detail-item';
+      item.innerHTML = `<strong>${u.user}</strong> — tty: ${u.tty || 'N/A'} | logged in: ${u.date || ''} ${u.time || ''}`;
+      usersList.appendChild(item);
+    });
+  } else if (run.users !== false) {
+    usersList.innerHTML = '<p style="color: #999; font-size: 13px;">No users found</p>';
   }
 }
 
