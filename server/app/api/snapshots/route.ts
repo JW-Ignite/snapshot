@@ -32,6 +32,52 @@ function extractStatusError(data: any): string | null {
   return null;
 }
 
+function isMissingDerivedSnapshotColumnsError(message: unknown): boolean {
+  if (typeof message !== 'string') return false;
+  const value = message.toLowerCase();
+  const mentionsDerivedColumn =
+    value.includes('snapshot_status') ||
+    value.includes('snapshot_size_bytes') ||
+    value.includes('snapshot_error');
+
+  return (
+    mentionsDerivedColumn &&
+    (
+      (value.includes('column') && value.includes('does not exist')) ||
+      value.includes('schema cache')
+    )
+  );
+}
+
+type SnapshotInsertInput = {
+  machine_id: string;
+  machine_name: string;
+  snapshot_name: string;
+  timestamp: string;
+  data: unknown;
+  snapshot_status: SnapshotStatus;
+  snapshot_size_bytes: number;
+  snapshot_error: string | null;
+};
+
+async function insertSnapshotWithSchemaFallback(payload: SnapshotInsertInput) {
+  const fullInsert = await getSupabase()
+    .from('snapshots')
+    .insert(payload)
+    .select('id')
+    .single();
+
+  if (!fullInsert.error) return fullInsert;
+  if (!isMissingDerivedSnapshotColumnsError(fullInsert.error.message)) return fullInsert;
+
+  const { snapshot_status, snapshot_size_bytes, snapshot_error, ...legacyPayload } = payload;
+  return getSupabase()
+    .from('snapshots')
+    .insert(legacyPayload)
+    .select('id')
+    .single();
+}
+
 // Validate API key
 function isAuthorized(req: NextRequest) {
   const key = req.headers.get('x-api-key');
@@ -52,9 +98,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Try inserting with dedicated columns; fall back without them
-    let inserted: { id: string } | null = null;
-    const { data: result1, error: err1 } = await getSupabase()
+    const { data: inserted, error } = await getSupabase()
       .from('snapshots')
       .insert({
         machine_id,
@@ -119,35 +163,8 @@ export async function GET(req: NextRequest) {
     query = query.eq('machine_id', machine_id);
   }
 
-  let { data, error } = await query;
-
-  // If the query failed (e.g. columns don't exist yet), fall back to fetching with data
-  if (error) {
-    let fallbackQuery = getSupabase()
-      .from('snapshots')
-      .select('id, machine_id, machine_name, snapshot_name, timestamp, data')
-      .order('timestamp', { ascending: false });
-
-    if (machine_id) {
-      fallbackQuery = fallbackQuery.eq('machine_id', machine_id);
-    }
-
-    const fallback = await fallbackQuery;
-    if (fallback.error) return NextResponse.json({ error: fallback.error.message }, { status: 500 });
-
-    const rows = (fallback.data || []).map((row: any) => ({
-      id: row.id,
-      machine_id: row.machine_id,
-      machine_name: row.machine_name,
-      snapshot_name: row.snapshot_name,
-      timestamp: row.timestamp,
-      snapshot_size_bytes: estimateSnapshotSizeBytes(row.data),
-      snapshot_status: extractStatus(row.data),
-      snapshot_error: extractStatusError(row.data),
-    }));
-
-    return NextResponse.json(rows);
-  }
+  const { data, error } = await query;
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const rows = (data || []).map((row: any) => ({
     id: row.id,

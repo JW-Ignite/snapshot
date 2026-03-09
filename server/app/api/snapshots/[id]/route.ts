@@ -29,6 +29,23 @@ function extractStatusError(data: any): string | null {
   return null;
 }
 
+function isMissingDerivedSnapshotColumnsError(message: unknown): boolean {
+  if (typeof message !== 'string') return false;
+  const value = message.toLowerCase();
+  const mentionsDerivedColumn =
+    value.includes('snapshot_status') ||
+    value.includes('snapshot_size_bytes') ||
+    value.includes('snapshot_error');
+
+  return (
+    mentionsDerivedColumn &&
+    (
+      (value.includes('column') && value.includes('does not exist')) ||
+      value.includes('schema cache')
+    )
+  );
+}
+
 // GET /api/snapshots/[id] — load full snapshot data
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!isAuthorized(req)) {
@@ -93,16 +110,34 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
     }
 
-    const { data, error } = await getSupabase()
+    const fullUpdate = await getSupabase()
       .from('snapshots')
       .update(updates)
       .eq('id', id)
       .select('id')
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!fullUpdate.error) {
+      return NextResponse.json({ success: true, id: fullUpdate.data.id });
+    }
 
-    return NextResponse.json({ success: true, id: data.id });
+    if (!isMissingDerivedSnapshotColumnsError(fullUpdate.error.message)) {
+      return NextResponse.json({ error: fullUpdate.error.message }, { status: 500 });
+    }
+
+    const { snapshot_status, snapshot_size_bytes, snapshot_error, ...legacyUpdates } = updates;
+    const legacyUpdate = await getSupabase()
+      .from('snapshots')
+      .update(legacyUpdates)
+      .eq('id', id)
+      .select('id')
+      .single();
+
+    if (legacyUpdate.error) {
+      return NextResponse.json({ error: legacyUpdate.error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, id: legacyUpdate.data.id });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || 'Update failed' }, { status: 500 });
   }
