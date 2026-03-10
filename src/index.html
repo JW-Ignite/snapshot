@@ -5,6 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>System Snapshot Viewer</title>
+  <link rel="stylesheet" href="index.css" />
 </head>
 
 <body>
@@ -14,7 +15,10 @@
       <p class="subtitle">View and manage system snapshots</p>
     </header>
 
-    <div class="main-content">
+    <div class="main-content" id="mainContent">
+      <button class="sidebar-toggle" id="sidebarToggle" onclick="document.getElementById('mainContent').classList.toggle('sidebar-collapsed')">
+        <span class="sidebar-toggle-icon">‹</span>
+      </button>
       <div class="sidebar">
         <div class="snapshot-controls">
           <button id="newSnapshotBtn" class="btn btn-primary">
@@ -76,30 +80,30 @@
           <div class="detail-content">
             <section class="system-info">
               <h3>System Information</h3>
-              <div class="info-grid">
-                <div class="info-item">
-                  <span class="label">CPU Manufacturer</span>
-                  <span id="cpuManufacturer" class="value">-</span>
+              <div class="info-panel">
+                <div class="info-row">
+                  <span class="info-label">OS</span>
+                  <span id="osInfo" class="info-value">-</span>
                 </div>
-                <div class="info-item">
-                  <span class="label">CPU Brand</span>
-                  <span id="cpuBrand" class="value">-</span>
+                <div class="info-row">
+                  <span class="info-label">CPU Manufacturer</span>
+                  <span id="cpuManufacturer" class="info-value">-</span>
                 </div>
-                <div class="info-item">
-                  <span class="label">CPU Cores</span>
-                  <span id="cpuCores" class="value">-</span>
+                <div class="info-row">
+                  <span class="info-label">CPU Brand</span>
+                  <span id="cpuBrand" class="info-value">-</span>
                 </div>
-                <div class="info-item">
-                  <span class="label">Total Memory</span>
-                  <span id="totalMemory" class="value">-</span>
+                <div class="info-row">
+                  <span class="info-label">CPU Cores</span>
+                  <span id="cpuCores" class="info-value">-</span>
                 </div>
-                <div class="info-item">
-                  <span class="label">OS</span>
-                  <span id="osInfo" class="value">-</span>
+                <div class="info-row">
+                  <span class="info-label">Total Memory</span>
+                  <span id="totalMemory" class="info-value">-</span>
                 </div>
-                <div class="info-item">
-                  <span class="label">Total Disk</span>
-                  <span id="diskInfo" class="value">-</span>
+                <div class="info-row">
+                  <span class="info-label">Total Disk</span>
+                  <span id="diskInfo" class="info-value">-</span>
                 </div>
               </div>
             </section>
