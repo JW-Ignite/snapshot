@@ -10,6 +10,9 @@ const http = require('http');
 // Load .env file from the project root
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 
+const DEFAULT_SNAPSHOT_SERVER_URL = 'http://localhost:3000';
+const DEFAULT_SNAPSHOT_API_KEY = 'sb_publishable_4cRWlmo693rt6aPU8Tmqjg_ZDnfLWJV';
+
 // Helper: make an HTTP/HTTPS request (no fetch in older Node)
 function makeRequest(url, options, body) {
   return new Promise((resolve, reject) => {
@@ -279,6 +282,26 @@ ipcMain.handle('delete-snapshot', async (event, filename) => {
   }
 });
 
+ipcMain.handle('wipe-all-snapshots', async () => {
+  try {
+    const snapshotDir = app.getPath('userData');
+    const files = fs.readdirSync(snapshotDir).filter(f => f.endsWith('.json'));
+    for (const file of files) {
+      fs.unlinkSync(path.join(snapshotDir, file));
+    }
+    return { success: true, count: files.length };
+  } catch (e) {
+    console.error("Error wiping snapshots:", e);
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('open-snapshot-folder', async () => {
+  const { shell } = require('electron');
+  const snapshotDir = app.getPath('userData');
+  shell.openPath(snapshotDir);
+});
+
 ipcMain.handle('compare-snapshots', async (event, baselineName, afterName) => {
   try {
     const baselinePath = path.join(getSnapshotDir(), `${baselineName}.json`);
@@ -386,49 +409,10 @@ ipcMain.handle('upload-snapshot', async (event, filename) => {
   };
 
   try {
-    const serverUrl = process.env.SNAPSHOT_SERVER_URL;
-    const apiKey = process.env.SNAPSHOT_API_KEY;
+    const serverUrl = process.env.SNAPSHOT_SERVER_URL || DEFAULT_SNAPSHOT_SERVER_URL;
+    const apiKey = process.env.SNAPSHOT_API_KEY || DEFAULT_SNAPSHOT_API_KEY;
     const machineId = process.env.MACHINE_ID || require('os').hostname();
     const machineName = process.env.MACHINE_NAME || require('os').hostname();
-
-    if (!serverUrl || !apiKey) {
-      return { success: false, error: 'SNAPSHOT_SERVER_URL and SNAPSHOT_API_KEY env vars not set' };
-    }
-
-    const pendingPayload = {
-      machine_id: machineId,
-      machine_name: machineName,
-      snapshot_name: filename,
-      data: withStatus({
-        metadata: {
-          snapshot_name: filename,
-          timestamp: new Date().toISOString(),
-        }
-      }, 'Pending')
-    };
-
-    const pendingResult = await createSnapshotRow(serverUrl, apiKey, pendingPayload);
-    if (pendingResult.status !== 200 && pendingResult.status !== 201) {
-      return { success: false, error: pendingResult.body?.message || pendingResult.body?.error || `HTTP ${pendingResult.status}` };
-    }
-
-    snapshotId = pendingResult.body?.id;
-    if (!snapshotId) {
-      return { success: false, error: 'Upload failed: missing snapshot id from server' };
-    }
-
-    const runningResult = await updateSnapshotRow(serverUrl, apiKey, snapshotId, {
-      data: withStatus({
-        metadata: {
-          snapshot_name: filename,
-          timestamp: new Date().toISOString(),
-        }
-      }, 'Running')
-    });
-
-    if (runningResult.status !== 200) {
-      return { success: false, error: runningResult.body?.message || runningResult.body?.error || `HTTP ${runningResult.status}` };
-    }
 
     // Load the local snapshot
     const snapshotPath = path.join(getSnapshotDir(), `${filename}.json`);
@@ -436,48 +420,32 @@ ipcMain.handle('upload-snapshot', async (event, filename) => {
 
     const completedData = withStatus(data, 'Completed');
 
-    const completedResult = await updateSnapshotRow(serverUrl, apiKey, snapshotId, {
+    // Upload in a single POST with the full snapshot data
+    const payload = {
+      machine_id: machineId,
       machine_name: machineName,
       snapshot_name: filename,
-      timestamp: completedData.metadata?.timestamp || new Date().toISOString(),
-      data: completedData
-    });
+      data: completedData,
+    };
 
-    if (completedResult.status === 200) {
+    const result = await createSnapshotRow(serverUrl, apiKey, payload);
+
+    if (result.status === 200 || result.status === 201) {
+      snapshotId = result.body?.id;
       return { success: true, id: snapshotId };
     }
 
-    return { success: false, error: completedResult.body?.message || completedResult.body?.error || `HTTP ${completedResult.status}` };
+    return { success: false, error: result.body?.error || result.body?.message || `HTTP ${result.status}` };
   } catch (e) {
     console.error('Error uploading snapshot:', e);
-
-    if (snapshotId) {
-      try {
-        const serverUrl = process.env.SNAPSHOT_SERVER_URL;
-        const apiKey = process.env.SNAPSHOT_API_KEY;
-        if (serverUrl && apiKey) {
-          await updateSnapshotRow(serverUrl, apiKey, snapshotId, {
-            data: withStatus({
-              metadata: {
-                snapshot_name: filename,
-                timestamp: new Date().toISOString(),
-              }
-            }, 'Failed', e.message || 'Unknown upload failure')
-          });
-        }
-      } catch (statusError) {
-        console.error('Error updating failed status:', statusError);
-      }
-    }
-
     return { success: false, error: e.message };
   }
 });
 
 ipcMain.handle('list-remote-snapshots', async (event) => {
   try {
-    const serverUrl = process.env.SNAPSHOT_SERVER_URL;
-    const apiKey = process.env.SNAPSHOT_API_KEY;
+    const serverUrl = process.env.SNAPSHOT_SERVER_URL || DEFAULT_SNAPSHOT_SERVER_URL;
+    const apiKey = process.env.SNAPSHOT_API_KEY || DEFAULT_SNAPSHOT_API_KEY;
 
     if (!serverUrl || !apiKey) return [];
 

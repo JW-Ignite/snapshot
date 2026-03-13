@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 
 type SnapshotStatus = 'Pending' | 'Running' | 'Completed' | 'Failed';
+const DEFAULT_API_SECRET_KEY = 'sb_publishable_4cRWlmo693rt6aPU8Tmqjg_ZDnfLWJV';
 
 function estimateSnapshotSizeBytes(payload: unknown): number {
   try {
@@ -34,7 +35,7 @@ function extractStatusError(data: any): string | null {
 // Validate API key
 function isAuthorized(req: NextRequest) {
   const key = req.headers.get('x-api-key');
-  return key === process.env.API_SECRET_KEY;
+  return key === (process.env.API_SECRET_KEY || DEFAULT_API_SECRET_KEY);
 }
 
 // POST /api/snapshots — upload a snapshot from an Electron machine
@@ -59,6 +60,9 @@ export async function POST(req: NextRequest) {
         snapshot_name,
         timestamp: data.metadata?.timestamp || new Date().toISOString(),
         data,
+        snapshot_status: extractStatus(data),
+        snapshot_size_bytes: estimateSnapshotSizeBytes(data),
+        snapshot_error: extractStatusError(data),
       })
       .select('id')
       .single();
@@ -73,6 +77,9 @@ export async function POST(req: NextRequest) {
 }
 
 // GET /api/snapshots — list all snapshots (optionally filter by machine_id)
+// NOTE: deliberately excludes the `data` column to avoid massive Supabase egress.
+// Status and size are read from dedicated columns (snapshot_status, snapshot_size_bytes)
+// if they exist, otherwise they fall back to safe defaults without fetching the blob.
 export async function GET(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -81,9 +88,10 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const machine_id = searchParams.get('machine_id');
 
+  // Only select lightweight metadata columns — never fetch the full data blob here
   let query = getSupabase()
     .from('snapshots')
-    .select('id, machine_id, machine_name, snapshot_name, timestamp, data')
+    .select('id, machine_id, machine_name, snapshot_name, timestamp, snapshot_status, snapshot_size_bytes, snapshot_error')
     .order('timestamp', { ascending: false });
 
   if (machine_id) {
@@ -93,16 +101,16 @@ export async function GET(req: NextRequest) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const withSizes = (data || []).map((row: any) => ({
+  const rows = (data || []).map((row: any) => ({
     id: row.id,
     machine_id: row.machine_id,
     machine_name: row.machine_name,
     snapshot_name: row.snapshot_name,
     timestamp: row.timestamp,
-    snapshot_size_bytes: estimateSnapshotSizeBytes(row.data),
-    snapshot_status: extractStatus(row.data),
-    snapshot_error: extractStatusError(row.data),
+    snapshot_size_bytes: row.snapshot_size_bytes ?? 0,
+    snapshot_status: normalizeStatus(row.snapshot_status),
+    snapshot_error: row.snapshot_error ?? null,
   }));
 
-  return NextResponse.json(withSizes);
+  return NextResponse.json(rows);
 }

@@ -1,3 +1,147 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>System Snapshot Viewer</title>
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>System Snapshot Viewer</h1>
+      <p class="subtitle">View and manage system snapshots</p>
+    </header>
+
+    <div class="main-content">
+      <div class="sidebar">
+        <div class="snapshot-controls">
+          <button id="newSnapshotBtn" class="btn btn-primary">
+            Take New Snapshot
+          </button>
+          <input type="text" id="snapshotName" placeholder="Enter snapshot name..." class="input-field" />
+        </div>
+
+        <div class="snapshot-list-container">
+          <h2>Saved Snapshots</h2>
+          <div id="snapshotList" class="snapshot-list">
+            <p class="loading">Loading snapshots...</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="main-view">
+        <div id="emptyState" class="empty-state">
+          <p>Select a snapshot to view details</p>
+        </div>
+
+        <div id="snapshotDetail" class="snapshot-detail" style="display: none;">
+          <div class="detail-header">
+            <div>
+              <h2 id="detailTitle">Snapshot Details</h2>
+              <p id="detailTimestamp" class="timestamp"></p>
+              <div id="integrityInfo" class="integrity-info"></div>
+            </div>
+            <div class="header-buttons">
+              <select id="compareSelect" class="input-field" style="max-width: 200px;">
+                <option value="">Compare with...</option>
+              </select>
+              <button id="compareBtn" class="btn btn-primary">Compare</button>
+                <button id="uploadBtn" class="btn btn-upload">Upload</button>
+              <button id="deleteBtn" class="btn btn-danger">Delete</button>
+            </div>
+          </div>
+
+          <div id="comparisonView" class="comparison-view" style="display: none;">
+            <h3>Comparison Results</h3>
+            <div class="comparison-grid">
+              <div class="comparison-card">
+                <h4>New Processes</h4>
+                <div id="newProcessesList" class="comparison-list"></div>
+              </div>
+              <div class="comparison-card">
+                <h4>Removed Processes</h4>
+                <div id="removedProcessesList" class="comparison-list"></div>
+              </div>
+              <div class="comparison-card">
+                <h4>Process Changes</h4>
+                <div id="processChangesList" class="comparison-list"></div>
+              </div>
+              <div class="comparison-card">
+                <h4>New Listening Ports</h4>
+                <div id="newPortsList" class="comparison-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-content">
+            <section class="system-info">
+              <h3>System Information</h3>
+              <div class="info-grid">
+                <div class="info-item">
+                  <span class="label">CPU Manufacturer</span>
+                  <span id="cpuManufacturer" class="value">-</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">CPU Brand</span>
+                  <span id="cpuBrand" class="value">-</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">CPU Cores</span>
+                  <span id="cpuCores" class="value">-</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">Total Memory</span>
+                  <span id="totalMemory" class="value">-</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">OS</span>
+                  <span id="osInfo" class="value">-</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">Total Disk</span>
+                  <span id="diskInfo" class="value">-</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="network-section">
+              <h3>Network</h3>
+              <div class="network-info">
+                <div>
+                  <strong>Network Interfaces:</strong>
+                  <div id="networkInterfaces" class="details-list"></div>
+                </div>
+                <div>
+                  <strong>Listening Ports:</strong>
+                  <div id="listeningPorts" class="details-list"></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="filesystem-section">
+              <h3>File System</h3>
+              <div id="filesystemInfo" class="details-list"></div>
+            </section>
+
+            <section class="processes-section">
+              <h3>Running Processes</h3>
+              <div class="search-bar">
+                <input type="text" id="processSearch" placeholder="Search processes..." class="input-field" />
+              </div>
+              <div id="processList" class="process-list">
+                <p class="loading">Loading processes...</p>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>
 * {
   margin: 0;
   padding: 0;

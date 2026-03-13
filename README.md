@@ -1,4 +1,4 @@
-# 📸 Snapshot Tool
+# Snapshot Tool
 
 A desktop application for capturing, storing, and comparing system state snapshots. Built with Electron, it provides deep visibility into your system's running processes, network configuration, and hardware info — with cryptographic signing to ensure snapshot integrity.
 
@@ -9,10 +9,10 @@ A desktop application for capturing, storing, and comparing system state snapsho
 - **System Snapshots** — Capture a full point-in-time view of your system including CPU, memory, disk, OS, network interfaces, listening ports, and all running processes (900+)
 - **SHA256 Integrity Signing** — Every snapshot is cryptographically signed at capture time so you can verify it hasn't been tampered with
 - **Snapshot Comparison** — Diff any two snapshots to see:
-  - 🆕 New processes that appeared
-  - ❌ Processes that were removed
-  - 📈 Processes with significant CPU/memory changes
-  - 🔌 New listening ports opened
+  - New processes that appeared
+  - Processes that were removed
+  - Processes with significant CPU/memory changes
+  - New listening ports opened
 - **Process Search** — Real-time filter across all captured processes by name
 - **Local Storage** — Snapshots are saved as JSON files in your app data directory (`~/Library/Application Support/snapshot-tool/` on macOS)
 
@@ -59,10 +59,10 @@ npm run make
 
 ## Usage
 
-1. **Take a Snapshot** — Type a name in the input field (or leave blank for a timestamped name) and click **📷 Take New Snapshot**. Data collection takes a few seconds.
+1. **Take a Snapshot** — Type a name in the input field (or leave blank for a timestamped name) and click **Take New Snapshot**. Data collection takes a few seconds.
 2. **View a Snapshot** — Click any snapshot in the left sidebar to load its details.
-3. **Compare Snapshots** — With a snapshot loaded, select another from the **"Compare with..."** dropdown and click **📊 Compare**.
-4. **Delete a Snapshot** — Click **🗑️ Delete** while a snapshot is loaded and confirm the dialog.
+3. **Compare Snapshots** — With a snapshot loaded, select another from the **"Compare with..."** dropdown and click **Compare**.
+4. **Delete a Snapshot** — Click **Delete** while a snapshot is loaded and confirm the dialog.
 5. **Search Processes** — Use the search bar in the Processes section to filter by process name.
 
 ---

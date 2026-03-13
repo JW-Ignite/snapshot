@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 
 interface SnapshotMeta {
   id: string;
@@ -131,6 +132,8 @@ const sortFieldOptions: Array<{ value: SortField; label: string }> = [
   { value: 'status', label: 'Status' },
 ];
 
+const DEFAULT_PUBLIC_API_KEY = 'sb_publishable_4cRWlmo693rt6aPU8Tmqjg_ZDnfLWJV';
+
 export default function Dashboard() {
   const [snapshots, setSnapshots] = useState<SnapshotMeta[]>([]);
   const [selected, setSelected] = useState<any>(null);
@@ -141,15 +144,9 @@ export default function Dashboard() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [query, setQuery] = useState('');
 
-  const apiKey = process.env.NEXT_PUBLIC_API_KEY || '';
+  const apiKey = process.env.NEXT_PUBLIC_API_KEY || DEFAULT_PUBLIC_API_KEY;
 
   useEffect(() => {
-    if (!apiKey) {
-      setError('NEXT_PUBLIC_API_KEY is not configured.');
-      setLoading(false);
-      return;
-    }
-
     let isMounted = true;
 
     const loadSnapshots = () => {
@@ -172,7 +169,7 @@ export default function Dashboard() {
     };
 
     loadSnapshots();
-    const interval = setInterval(loadSnapshots, 3000);
+    const interval = setInterval(loadSnapshots, 60000); // poll every 60s, not 3s
 
     return () => {
       isMounted = false;
@@ -286,8 +283,16 @@ export default function Dashboard() {
       {/* Sidebar */}
       <div className="w-80 bg-white border-r overflow-y-auto flex flex-col">
         <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
-          <h1 className="text-xl font-bold">📸 Snapshot Server</h1>
+          <h1 className="text-xl font-bold">Snapshot Server</h1>
           <p className="text-sm opacity-80">Multi-machine dashboard</p>
+          <Link
+            href="/dashboard/engineer"
+            className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
+          >
+            <span>⚙️</span>
+            Engineer Panel
+            <span className="text-white/60">→</span>
+          </Link>
         </div>
 
         {loading && <p className="p-4 text-gray-500">Loading...</p>}
@@ -411,11 +416,11 @@ export default function Dashboard() {
               <div>
                 <h2 className="text-2xl font-bold text-gray-800">{selected.snapshot_name}</h2>
                 <p className="text-gray-400 text-sm mt-1">
-                  {new Date(selected.timestamp).toLocaleString()} · 🖥️ {selected.machine_name}
+                  {new Date(selected.timestamp).toLocaleString()} · {selected.machine_name}
                 </p>
                 {selected.data?.integrity && (
                   <p className="text-xs text-gray-400 font-mono mt-1">
-                    ✓ SHA256: {selected.data.integrity.sha256_checksum.substring(0, 16)}...
+                    SHA256: {selected.data.integrity.sha256_checksum.substring(0, 16)}...
                   </p>
                 )}
               </div>
@@ -423,7 +428,7 @@ export default function Dashboard() {
 
             {/* System Info */}
             <section className="mb-8">
-              <h3 className="text-lg font-semibold text-gray-700 mb-3">💻 System Information</h3>
+              <h3 className="text-lg font-semibold text-gray-700 mb-3">System Information</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {[
                   ['CPU', `${selected.data?.system?.cpu_brand}`],
@@ -443,7 +448,7 @@ export default function Dashboard() {
 
             {/* Network */}
             <section className="mb-8">
-              <h3 className="text-lg font-semibold text-gray-700 mb-3">🌐 Listening Ports</h3>
+              <h3 className="text-lg font-semibold text-gray-700 mb-3">Listening Ports</h3>
               <div className="bg-white rounded-lg shadow-sm overflow-hidden">
                 {selected.data?.network?.listening_ports?.slice(0, 10).map((port: any, i: number) => (
                   <div key={i} className="px-4 py-2 border-b text-sm flex justify-between">
@@ -457,7 +462,7 @@ export default function Dashboard() {
             {/* Processes */}
             <section>
               <h3 className="text-lg font-semibold text-gray-700 mb-3">
-                ⚙️ Top Processes ({selected.data?.running_processes?.length} total)
+                Top Processes ({selected.data?.running_processes?.length} total)
               </h3>
               <div className="bg-white rounded-lg shadow-sm overflow-hidden">
                 {selected.data?.running_processes?.slice(0, 20).map((proc: any, i: number) => (
