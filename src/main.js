@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { execSync } = require('child_process');
 const https = require('https');
 const http = require('http');
 
@@ -62,8 +63,18 @@ async function takeSnapshot(filename, tests = {}) {
     const networkConnections = run.network ? await si.networkConnections() : [];
     console.log('Fetching disk layout...');
     const diskLayout = run.disk ? await si.diskLayout() : [];
-    console.log('Fetching file system size...');
-    const fsSize = run.disk ? await si.fsSize() : [];
+    console.log('Fetching disk I/O...');
+    let diskIO = [];
+    if (run.disk) {
+      try {
+        const psCmd = 'Get-CimInstance Win32_PerfFormattedData_PerfDisk_LogicalDisk | Select-Object Name, DiskReadBytesPersec, DiskWriteBytesPersec, DiskReadsPersec, DiskWritesPersec | ConvertTo-Json';
+        const raw = execSync(`powershell -NoProfile -Command "${psCmd}"`, { encoding: 'utf-8', timeout: 10000 });
+        const parsed = JSON.parse(raw);
+        diskIO = (Array.isArray(parsed) ? parsed : [parsed]).filter(d => d.Name !== '_Total');
+      } catch (e) {
+        console.error('Failed to get disk I/O:', e.message);
+      }
+    }
     console.log('Fetching OS info...');
     const osInfo = run.cpu ? await si.osInfo() : {};
     console.log('Fetching users...');
@@ -101,12 +112,12 @@ async function takeSnapshot(filename, tests = {}) {
         // Disk Info
         disk_count: diskLayout.length,
         total_disk_size_gb: diskLayout.reduce((sum, d) => sum + (d.size / 1024 / 1024 / 1024), 0).toFixed(2),
-        filesystem_info: fsSize.map(fs => ({
-          mount: fs.mount,
-          size_gb: (fs.size / 1024 / 1024 / 1024).toFixed(2),
-          used_gb: (fs.used / 1024 / 1024 / 1024).toFixed(2),
-          available_gb: (fs.available / 1024 / 1024 / 1024).toFixed(2),
-          use_percent: fs.use.toFixed(2)
+        disk_io: diskIO.map(d => ({
+          name: d.Name,
+          read_bytes_per_sec: d.DiskReadBytesPersec || 0,
+          write_bytes_per_sec: d.DiskWriteBytesPersec || 0,
+          reads_per_sec: d.DiskReadsPersec || 0,
+          writes_per_sec: d.DiskWritesPersec || 0,
         }))
       },
       network: {
@@ -225,6 +236,23 @@ ipcMain.handle('list-snapshots', async (event) => {
     return files.map(f => f.replace('.json', ''));
   } catch (e) {
     console.error("Error listing snapshots:", e);
+    return [];
+  }
+});
+
+ipcMain.handle('list-snapshots-with-timestamps', async () => {
+  try {
+    const snapshotDir = getSnapshotDir();
+    const files = fs.readdirSync(snapshotDir).filter(f => f.endsWith('.json') && f !== '_snapshot_settings.json');
+    return files.map(f => {
+      const name = f.replace('.json', '');
+      try {
+        const data = JSON.parse(fs.readFileSync(path.join(snapshotDir, f), 'utf-8'));
+        return { name, timestamp: data.metadata?.timestamp || null };
+      } catch { return { name, timestamp: null }; }
+    }).sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+  } catch (e) {
+    console.error("Error listing snapshots with timestamps:", e);
     return [];
   }
 });
@@ -700,6 +728,222 @@ ipcMain.handle('reset-data-folder', async () => {
   customSnapshotDir = null;
   saveSettings();
   return { success: true, path: app.getPath('userData') };
+});
+
+// --- Deltas ---
+function getDeltaDir() {
+  const dir = path.join(getSnapshotDir(), 'deltas');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+ipcMain.handle('create-delta', async (event, beforeName, afterName, categories) => {
+  try {
+    const beforePath = path.join(getSnapshotDir(), `${beforeName}.json`);
+    const afterPath = path.join(getSnapshotDir(), `${afterName}.json`);
+    const before = JSON.parse(fs.readFileSync(beforePath, 'utf-8'));
+    const after = JSON.parse(fs.readFileSync(afterPath, 'utf-8'));
+
+    const cats = {
+      cpu:       categories.cpu       ?? true,
+      memory:    categories.memory    ?? true,
+      processes: categories.processes ?? true,
+      network:   categories.network   ?? true,
+      disk:      categories.disk      ?? true,
+      users:     categories.users     ?? true,
+    };
+
+    const delta = {
+      metadata: {
+        delta_name: `${beforeName}_vs_${afterName}`,
+        created_at: new Date().toISOString(),
+        before_snapshot: beforeName,
+        after_snapshot: afterName,
+        before_timestamp: before.metadata.timestamp,
+        after_timestamp: after.metadata.timestamp,
+        time_diff_minutes: Math.round((new Date(after.metadata.timestamp) - new Date(before.metadata.timestamp)) / 60000),
+        categories_compared: cats
+      }
+    };
+
+    // CPU & OS delta
+    if (cats.cpu) {
+      delta.cpu = {
+        before: { manufacturer: before.system.cpu_manufacturer, brand: before.system.cpu_brand, cores: before.system.cpu_cores, speed_ghz: before.system.cpu_speed_ghz },
+        after:  { manufacturer: after.system.cpu_manufacturer, brand: after.system.cpu_brand, cores: after.system.cpu_cores, speed_ghz: after.system.cpu_speed_ghz },
+        os_before: { distro: before.system.os_distro, release: before.system.os_release, kernel: before.system.os_kernel, arch: before.system.os_arch },
+        os_after:  { distro: after.system.os_distro, release: after.system.os_release, kernel: after.system.os_kernel, arch: after.system.os_arch },
+        changes: []
+      };
+      // Detect actual changes
+      if (before.system.cpu_cores !== after.system.cpu_cores) delta.cpu.changes.push({ field: 'CPU Cores', before: before.system.cpu_cores, after: after.system.cpu_cores });
+      if (before.system.cpu_speed_ghz !== after.system.cpu_speed_ghz) delta.cpu.changes.push({ field: 'CPU Speed', before: before.system.cpu_speed_ghz, after: after.system.cpu_speed_ghz });
+      if (before.system.os_distro !== after.system.os_distro) delta.cpu.changes.push({ field: 'OS Distro', before: before.system.os_distro, after: after.system.os_distro });
+      if (before.system.os_release !== after.system.os_release) delta.cpu.changes.push({ field: 'OS Release', before: before.system.os_release, after: after.system.os_release });
+      if (before.system.os_kernel !== after.system.os_kernel) delta.cpu.changes.push({ field: 'OS Kernel', before: before.system.os_kernel, after: after.system.os_kernel });
+    }
+
+    // Memory delta
+    if (cats.memory) {
+      const beforeUsed = parseFloat(before.system.used_memory_gb) || 0;
+      const afterUsed = parseFloat(after.system.used_memory_gb) || 0;
+      const beforeTotal = parseFloat(before.system.total_memory_gb) || 0;
+      const afterTotal = parseFloat(after.system.total_memory_gb) || 0;
+      delta.memory = {
+        total_before_gb: beforeTotal,
+        total_after_gb: afterTotal,
+        total_change_gb: +(afterTotal - beforeTotal).toFixed(2),
+        used_before_gb: beforeUsed,
+        used_after_gb: afterUsed,
+        used_change_gb: +(afterUsed - beforeUsed).toFixed(2),
+        used_percent_before: beforeTotal > 0 ? +((beforeUsed / beforeTotal) * 100).toFixed(1) : 0,
+        used_percent_after: afterTotal > 0 ? +((afterUsed / afterTotal) * 100).toFixed(1) : 0,
+      };
+    }
+
+    // Processes delta
+    if (cats.processes) {
+      const beforeProcs = before.running_processes || [];
+      const afterProcs = after.running_processes || [];
+      const beforeNames = new Set(beforeProcs.map(p => p.name));
+      const afterNames = new Set(afterProcs.map(p => p.name));
+
+      delta.processes = {
+        new_processes: afterProcs.filter(p => !beforeNames.has(p.name)),
+        removed_processes: beforeProcs.filter(p => !afterNames.has(p.name)),
+        changed_processes: afterProcs
+          .map(ap => {
+            const bp = beforeProcs.find(p => p.name === ap.name);
+            if (!bp) return null;
+            const cpuDiff = ap.cpu_usage - bp.cpu_usage;
+            const memDiff = ap.mem_usage - bp.mem_usage;
+            if (Math.abs(cpuDiff) < 0.5 && Math.abs(memDiff) < 0.5) return null;
+            return {
+              name: ap.name,
+              cpu_before: bp.cpu_usage, cpu_after: ap.cpu_usage, cpu_change: +cpuDiff.toFixed(2),
+              mem_before: bp.mem_usage, mem_after: ap.mem_usage, mem_change: +memDiff.toFixed(2)
+            };
+          })
+          .filter(Boolean)
+          .sort((a, b) => Math.abs(b.cpu_change) - Math.abs(a.cpu_change)),
+        count_before: beforeProcs.length,
+        count_after: afterProcs.length,
+        count_change: afterProcs.length - beforeProcs.length
+      };
+    }
+
+    // Network delta
+    if (cats.network) {
+      const beforePorts = before.network?.listening_ports || [];
+      const afterPorts = after.network?.listening_ports || [];
+      const beforeIfaces = before.network?.interfaces || [];
+      const afterIfaces = after.network?.interfaces || [];
+
+      delta.network = {
+        new_ports: afterPorts.filter(p => !beforePorts.some(bp => bp.local_port === p.local_port && bp.protocol === p.protocol)),
+        removed_ports: beforePorts.filter(p => !afterPorts.some(ap => ap.local_port === p.local_port && ap.protocol === p.protocol)),
+        new_interfaces: afterIfaces.filter(ai => !beforeIfaces.some(bi => bi.iface === ai.iface)),
+        removed_interfaces: beforeIfaces.filter(bi => !afterIfaces.some(ai => ai.iface === bi.iface)),
+        port_count_before: beforePorts.length,
+        port_count_after: afterPorts.length,
+        interface_count_before: beforeIfaces.length,
+        interface_count_after: afterIfaces.length,
+      };
+    }
+
+    // Disk I/O delta
+    if (cats.disk) {
+      const beforeIO = before.system?.disk_io || [];
+      const afterIO = after.system?.disk_io || [];
+
+      delta.disk = {
+        drives: afterIO.map(aio => {
+          const bio = beforeIO.find(d => d.name === aio.name);
+          return {
+            name: aio.name,
+            read_bytes_per_sec_before: bio?.read_bytes_per_sec || 0,
+            read_bytes_per_sec_after: aio.read_bytes_per_sec || 0,
+            write_bytes_per_sec_before: bio?.write_bytes_per_sec || 0,
+            write_bytes_per_sec_after: aio.write_bytes_per_sec || 0,
+            reads_per_sec_before: bio?.reads_per_sec || 0,
+            reads_per_sec_after: aio.reads_per_sec || 0,
+            writes_per_sec_before: bio?.writes_per_sec || 0,
+            writes_per_sec_after: aio.writes_per_sec || 0,
+          };
+        })
+      };
+    }
+
+    // Users delta
+    if (cats.users) {
+      const beforeUsers = (before.users || []).map(u => u.user);
+      const afterUsers = (after.users || []).map(u => u.user);
+      delta.users = {
+        new_users: (after.users || []).filter(u => !beforeUsers.includes(u.user)),
+        removed_users: (before.users || []).filter(u => !afterUsers.includes(u.user)),
+        count_before: beforeUsers.length,
+        count_after: afterUsers.length,
+      };
+    }
+
+    // Save to deltas folder
+    const deltaDir = getDeltaDir();
+    const now = new Date();
+    const ts = now.getFullYear() + '-' +
+      String(now.getMonth() + 1).padStart(2, '0') + '-' +
+      String(now.getDate()).padStart(2, '0') + '_' +
+      String(now.getHours()).padStart(2, '0') + '-' +
+      String(now.getMinutes()).padStart(2, '0') + '-' +
+      String(now.getSeconds()).padStart(2, '0');
+    // Sanitize snapshot names for filename safety
+    const safeBefore = beforeName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeAfter = afterName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const deltaFilename = `${safeBefore}_vs_${safeAfter}_${ts}.json`;
+    fs.writeFileSync(path.join(deltaDir, deltaFilename), JSON.stringify(delta, null, 2));
+
+    return { success: true, name: deltaFilename.replace('.json', ''), delta };
+  } catch (e) {
+    console.error('Error creating delta:', e);
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('list-deltas', async () => {
+  try {
+    const dir = getDeltaDir();
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+    // Return objects with name + created_at for client-side filtering
+    return files.map(f => {
+      const name = f.replace('.json', '');
+      try {
+        const data = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8'));
+        return { name, created_at: data.metadata?.created_at || null };
+      } catch { return { name, created_at: null }; }
+    }).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  } catch (e) {
+    console.error('Error listing deltas:', e);
+    return [];
+  }
+});
+
+ipcMain.handle('load-delta', async (event, name) => {
+  try {
+    const p = path.join(getDeltaDir(), `${name}.json`);
+    return JSON.parse(fs.readFileSync(p, 'utf-8'));
+  } catch (e) {
+    console.error('Error loading delta:', e);
+    return null;
+  }
+});
+
+ipcMain.handle('delete-delta', async (event, name) => {
+  try {
+    fs.unlinkSync(path.join(getDeltaDir(), `${name}.json`));
+    return true;
+  } catch (e) {
+    console.error('Error deleting delta:', e);
+    return false;
+  }
 });
 
 // 3. Run the app and test our function

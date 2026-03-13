@@ -27,6 +27,8 @@
  */
 
 import './index.css';
+import { Chart, registerables } from 'chart.js';
+Chart.register(...registerables);
 
 console.log('Renderer.js loaded');
 
@@ -45,6 +47,9 @@ if (typeof window !== 'undefined' && window.require) {
 
 let currentSnapshot = null;
 let allSnapshots = [];
+let currentDelta = null;
+let allDeltas = [];
+let activeTab = 'snapshots'; // 'snapshots' or 'deltas'
 
 // DOM Elements
 let newSnapshotBtn, snapshotNameInput, snapshotList, emptyState, snapshotDetail;
@@ -104,7 +109,7 @@ function buildUI() {
                 <label class="test-option"><input type="checkbox" id="test-memory"    checked> 🧠 Memory <span class="tooltip-icon" title="Collects total and used RAM, providing a snapshot of memory utilization">?</span></label>
                 <label class="test-option"><input type="checkbox" id="test-processes" checked> ⚙️ Processes <span class="tooltip-icon" title="Captures all running processes with PID, CPU usage, and memory usage">?</span></label>
                 <label class="test-option"><input type="checkbox" id="test-network"   checked> 🌐 Network <span class="tooltip-icon" title="Records network interfaces, IP addresses, and currently listening ports">?</span></label>
-                <label class="test-option"><input type="checkbox" id="test-disk"      checked> 💾 Disk &amp; FS <span class="tooltip-icon" title="Collects total disk size and filesystem mount usage statistics">?</span></label>
+                <label class="test-option"><input type="checkbox" id="test-disk"      checked> 💾 Disk I/O <span class="tooltip-icon" title="Collects disk read/write throughput and operations per second">?</span></label>
                 <label class="test-option"><input type="checkbox" id="test-users"     checked> 👤 Users <span class="tooltip-icon" title="Records currently logged-in users and session information">?</span></label>
               </div>
               <p class="setting-desc">Select which categories to collect in snapshots</p>
@@ -125,31 +130,130 @@ function buildUI() {
 
       <div class="main-content">
         <div class="sidebar">
-          <div class="snapshot-controls">
-            <input 
-              type="text" 
-              id="snapshotName" 
-              placeholder="Enter snapshot name..." 
-              class="input-field"
-              style="margin-bottom: 10px;"
-            />
-
-            <button id="newSnapshotBtn" class="btn btn-primary">
-              📷 Take Snapshot
-            </button>
+          <div class="sidebar-tabs">
+            <button id="tabSnapshots" class="sidebar-tab active">📷 Snapshots</button>
+            <button id="tabDeltas" class="sidebar-tab">📐 Deltas</button>
           </div>
 
-          <div class="snapshot-list-container">
-            <h2>Saved Snapshots</h2>
-            <div id="snapshotList" class="snapshot-list">
-              <p class="loading">Loading snapshots...</p>
+          <div id="snapshotsPanel" class="tab-panel">
+            <div class="snapshot-controls">
+              <input 
+                type="text" 
+                id="snapshotName" 
+                placeholder="Enter snapshot name..." 
+                class="input-field"
+                style="margin-bottom: 10px;"
+              />
+              <button id="newSnapshotBtn" class="btn btn-primary">
+                📷 Take Snapshot
+              </button>
+            </div>
+            <div class="snapshot-list-container">
+              <h2>Saved Snapshots</h2>
+              <div id="snapshotList" class="snapshot-list">
+                <p class="loading">Loading snapshots...</p>
+              </div>
+            </div>
+          </div>
+
+          <div id="deltasPanel" class="tab-panel" style="display: none;">
+            <div class="snapshot-controls">
+              <h3 style="margin-bottom: 10px; font-size: 14px;">Create Delta</h3>
+              <select id="deltaBeforeSelect" class="input-field" style="margin-bottom: 8px;">
+                <option value="">Before snapshot...</option>
+              </select>
+              <select id="deltaAfterSelect" class="input-field" style="margin-bottom: 8px;">
+                <option value="">After snapshot...</option>
+              </select>
+              <details class="delta-categories-details">
+                <summary>Categories to compare</summary>
+                <div class="test-selector" style="margin-top: 8px;">
+                  <label class="test-option"><input type="checkbox" id="delta-cpu" checked> 💻 CPU &amp; OS</label>
+                  <label class="test-option"><input type="checkbox" id="delta-memory" checked> 🧠 Memory</label>
+                  <label class="test-option"><input type="checkbox" id="delta-processes" checked> ⚙️ Processes</label>
+                  <label class="test-option"><input type="checkbox" id="delta-network" checked> 🌐 Network</label>
+                  <label class="test-option"><input type="checkbox" id="delta-disk" checked> 💾 Disk</label>
+                  <label class="test-option"><input type="checkbox" id="delta-users" checked> 👤 Users</label>
+                </div>
+              </details>
+              <button id="createDeltaBtn" class="btn btn-primary" style="margin-top: 10px;">
+                📐 Create Delta
+              </button>
+            </div>
+            <div class="snapshot-list-container">
+              <h2>Saved Deltas</h2>
+              <div class="delta-filter">
+                <label class="delta-filter-label">Filter by date &amp; time</label>
+                <input type="datetime-local" id="deltaFilterFrom" class="input-field delta-date-input" />
+                <input type="datetime-local" id="deltaFilterTo" class="input-field delta-date-input" />
+                <button id="deltaFilterClearBtn" class="btn btn-small" style="margin-top:4px;">✕ Clear</button>
+              </div>
+              <div id="deltaList" class="snapshot-list">
+                <p class="loading">Loading deltas...</p>
+              </div>
+            </div>
+            <div class="sidebar-graph-controls">
+              <div class="delta-filter">
+                <label class="delta-filter-label">Graph time range</label>
+                <input type="datetime-local" id="graphFilterFrom" class="input-field delta-date-input" />
+                <input type="datetime-local" id="graphFilterTo" class="input-field delta-date-input" />
+                <button id="graphFilterClearBtn" class="btn btn-small" style="margin-top:4px;">✕ Clear</button>
+              </div>
+              <button id="snapshotGraphBtn" class="btn btn-primary" style="width:100%" disabled>
+                📊 Graph Snapshots
+              </button>
             </div>
           </div>
         </div>
 
         <div class="main-view">
           <div id="emptyState" class="empty-state">
-            <p>👈 Select a snapshot to view details</p>
+            <p>👈 Select a snapshot or delta to view details</p>
+          </div>
+
+          <div id="deltaDetail" class="snapshot-detail" style="display: none;">
+            <div class="detail-header">
+              <div>
+                <h2 id="deltaTitle">Delta Details</h2>
+                <p id="deltaTimestamp" class="timestamp"></p>
+                <p id="deltaSnapshots" class="timestamp"></p>
+                <div id="deltaCategoriesBadges" class="tests-run-badges"></div>
+              </div>
+              <div class="header-buttons">
+                <button id="deleteDeltaBtn" class="btn btn-danger">🗑️ Delete</button>
+              </div>
+            </div>
+            <div class="detail-content" id="deltaContent"></div>
+          </div>
+
+          <div id="deltaGraphView" class="snapshot-detail" style="display: none;">
+            <div class="detail-header">
+              <div>
+                <h2>📊 Snapshot Trends</h2>
+                <p id="graphPeriodLabel" class="timestamp"></p>
+              </div>
+              <div class="header-buttons">
+                <button id="closeGraphBtn" class="btn btn-danger">✕ Close</button>
+              </div>
+            </div>
+            <div class="detail-content" id="graphContent">
+              <section>
+                <h3>🧠 Memory Usage Over Time</h3>
+                <div class="chart-container"><canvas id="memoryChart"></canvas></div>
+              </section>
+              <section>
+                <h3>⚙️ Process Count Over Time</h3>
+                <div class="chart-container"><canvas id="processChart"></canvas></div>
+              </section>
+              <section>
+                <h3>🌐 Network Ports Over Time</h3>
+                <div class="chart-container"><canvas id="networkChart"></canvas></div>
+              </section>
+              <section>
+                <h3>💾 Disk I/O Over Time</h3>
+                <div class="chart-container"><canvas id="diskChart"></canvas></div>
+              </section>
+            </div>
           </div>
 
           <div id="snapshotDetail" class="snapshot-detail" style="display: none;">
@@ -218,7 +322,7 @@ function buildUI() {
                     <span id="osInfo" class="value">-</span>
                   </div>
                   <div class="info-item">
-                    <span class="label">Total Disk</span>
+                    <span class="label">Disk I/O</span>
                     <span id="diskInfo" class="value">-</span>
                   </div>
                 </div>
@@ -239,7 +343,7 @@ function buildUI() {
               </section>
 
               <section class="filesystem-section">
-                <h3>💾 File System</h3>
+                <h3>💾 Disk I/O</h3>
                 <div id="filesystemInfo" class="details-list"></div>
               </section>
 
@@ -575,6 +679,133 @@ newSnapshotBtn.addEventListener('click', () => {
     loadSnapshotList();
   });
 
+  // --- Sidebar Tabs ---
+  const tabSnapshots = document.getElementById('tabSnapshots');
+  const tabDeltas = document.getElementById('tabDeltas');
+  const snapshotsPanel = document.getElementById('snapshotsPanel');
+  const deltasPanel = document.getElementById('deltasPanel');
+
+  tabSnapshots.addEventListener('click', () => {
+    activeTab = 'snapshots';
+    tabSnapshots.classList.add('active');
+    tabDeltas.classList.remove('active');
+    snapshotsPanel.style.display = '';
+    deltasPanel.style.display = 'none';
+  });
+
+  tabDeltas.addEventListener('click', () => {
+    activeTab = 'deltas';
+    tabDeltas.classList.add('active');
+    tabSnapshots.classList.remove('active');
+    deltasPanel.style.display = '';
+    snapshotsPanel.style.display = 'none';
+    loadDeltaList();
+    populateDeltaDropdowns();
+  });
+
+  // --- Delta creation ---
+  const deltaBeforeSelect = document.getElementById('deltaBeforeSelect');
+  const deltaAfterSelect = document.getElementById('deltaAfterSelect');
+  const createDeltaBtn = document.getElementById('createDeltaBtn');
+  const deleteDeltaBtn = document.getElementById('deleteDeltaBtn');
+
+  const deltaCatCheckboxes = {
+    cpu:       document.getElementById('delta-cpu'),
+    memory:    document.getElementById('delta-memory'),
+    processes: document.getElementById('delta-processes'),
+    network:   document.getElementById('delta-network'),
+    disk:      document.getElementById('delta-disk'),
+    users:     document.getElementById('delta-users'),
+  };
+
+  createDeltaBtn.addEventListener('click', async () => {
+    const beforeName = deltaBeforeSelect.value;
+    const afterName = deltaAfterSelect.value;
+    if (!beforeName || !afterName) { alert('Please select both a Before and After snapshot.'); return; }
+    if (beforeName === afterName) { alert('Before and After must be different snapshots.'); return; }
+
+    const cats = {};
+    Object.entries(deltaCatCheckboxes).forEach(([k, cb]) => { cats[k] = cb?.checked ?? true; });
+    if (!Object.values(cats).some(Boolean)) { alert('Select at least one category.'); return; }
+
+    createDeltaBtn.disabled = true;
+    createDeltaBtn.textContent = '⏳ Creating...';
+    try {
+      const result = await ipcRenderer.invoke('create-delta', beforeName, afterName, cats);
+      if (result.success) {
+        await loadDeltaList();
+        await loadDelta(result.name);
+      } else {
+        alert(`Failed: ${result.error}`);
+      }
+    } catch (e) {
+      alert(`Error: ${e.message}`);
+    } finally {
+      createDeltaBtn.disabled = false;
+      createDeltaBtn.textContent = '📐 Create Delta';
+    }
+  });
+
+  deleteDeltaBtn.addEventListener('click', async () => {
+    if (!currentDelta) return;
+    if (!confirm(`Delete delta "${currentDelta}"?`)) return;
+    try {
+      await ipcRenderer.invoke('delete-delta', currentDelta);
+      currentDelta = null;
+      await loadDeltaList();
+      document.getElementById('deltaDetail').style.display = 'none';
+      document.getElementById('deltaGraphView').style.display = 'none';
+      emptyState.style.display = 'flex';
+    } catch (e) { console.error('Error deleting delta:', e); }
+  });
+
+  // --- Delta date filter ---
+  const deltaFilterFrom = document.getElementById('deltaFilterFrom');
+  const deltaFilterTo = document.getElementById('deltaFilterTo');
+  const deltaFilterClearBtn = document.getElementById('deltaFilterClearBtn');
+
+  deltaFilterFrom.addEventListener('change', () => { renderDeltaList(); });
+  deltaFilterTo.addEventListener('change', () => { renderDeltaList(); });
+  deltaFilterClearBtn.addEventListener('click', () => {
+    deltaFilterFrom.value = '';
+    deltaFilterTo.value = '';
+    renderDeltaList();
+  });
+
+  // --- Snapshot graph controls ---
+  const graphFilterFrom = document.getElementById('graphFilterFrom');
+  const graphFilterTo = document.getElementById('graphFilterTo');
+  const graphFilterClearBtn = document.getElementById('graphFilterClearBtn');
+  const snapshotGraphBtn = document.getElementById('snapshotGraphBtn');
+
+  graphFilterFrom.addEventListener('change', updateSnapshotGraphBtn);
+  graphFilterTo.addEventListener('change', updateSnapshotGraphBtn);
+  graphFilterClearBtn.addEventListener('click', () => {
+    graphFilterFrom.value = '';
+    graphFilterTo.value = '';
+    updateSnapshotGraphBtn();
+  });
+
+  async function updateSnapshotGraphBtn() {
+    const snapshots = await getFilteredSnapshots();
+    snapshotGraphBtn.disabled = snapshots.length < 2;
+    snapshotGraphBtn.textContent = snapshots.length >= 2
+      ? `📊 Graph ${snapshots.length} Snapshots`
+      : '📊 Graph Snapshots';
+  }
+
+  snapshotGraphBtn.addEventListener('click', async () => {
+    const snapshots = await getFilteredSnapshots();
+    if (snapshots.length < 2) { alert('Need at least 2 snapshots in the selected period to generate graphs.'); return; }
+    showSnapshotGraphs(snapshots);
+  });
+
+  // Close graph view
+  document.getElementById('closeGraphBtn').addEventListener('click', () => {
+    document.getElementById('deltaGraphView').style.display = 'none';
+    emptyState.style.display = 'flex';
+  });
+
   // Load snapshots on startup
   console.log('Loading snapshot list...');
   loadSnapshotList();
@@ -650,6 +881,8 @@ function displaySnapshot(data) {
   emptyState.style.display = 'none';
   snapshotDetail.style.display = 'flex';
   comparisonView.style.display = 'none';
+  document.getElementById('deltaDetail').style.display = 'none';
+  document.getElementById('deltaGraphView').style.display = 'none';
 
   detailTitle.textContent = currentSnapshot;
   detailTimestamp.textContent = new Date(data.metadata.timestamp).toLocaleString();
@@ -712,7 +945,14 @@ function displaySnapshot(data) {
   document.getElementById('cpuCores').textContent = data.system.cpu_cores || 'N/A';
   document.getElementById('totalMemory').textContent = `${data.system.total_memory_gb} GB (${data.system.used_memory_gb} GB used)`;
   document.getElementById('osInfo').textContent = `${data.system.os_distro || 'N/A'} (${data.system.os_release || 'N/A'})`;
-  document.getElementById('diskInfo').textContent = `${data.system.total_disk_size_gb} GB`;
+  const diskIOArr = data.system.disk_io || [];
+  if (diskIOArr.length > 0) {
+    const totalRead = diskIOArr.reduce((s, d) => s + (d.read_bytes_per_sec || 0), 0);
+    const totalWrite = diskIOArr.reduce((s, d) => s + (d.write_bytes_per_sec || 0), 0);
+    document.getElementById('diskInfo').textContent = `R: ${formatBytes(totalRead)}/s  W: ${formatBytes(totalWrite)}/s`;
+  } else {
+    document.getElementById('diskInfo').textContent = 'N/A';
+  }
 
   // Network section - hide entirely if not collected
   const networkSection = document.querySelector('.network-section');
@@ -754,11 +994,11 @@ function displaySnapshot(data) {
   filesystemInfo.innerHTML = '';
   if (run.disk === false) {
     // section is hidden, no need to populate
-  } else if (data.system && data.system.filesystem_info) {
-    data.system.filesystem_info.slice(0, 5).forEach(fs => {
+  } else if (data.system && data.system.disk_io) {
+    data.system.disk_io.forEach(d => {
       const item = document.createElement('div');
       item.className = 'detail-item';
-      item.innerHTML = `<strong>${fs.mount}</strong>: ${fs.used_gb}GB / ${fs.size_gb}GB (${fs.use_percent}% used)`;
+      item.innerHTML = `<strong>${d.name}</strong>: Read ${formatBytes(d.read_bytes_per_sec)}/s | Write ${formatBytes(d.write_bytes_per_sec)}/s | ${d.reads_per_sec} reads/s | ${d.writes_per_sec} writes/s`;
       filesystemInfo.appendChild(item);
     });
   }
@@ -906,6 +1146,8 @@ async function performComparison(baselineName, afterName) {
 // Display comparison results
 function displayComparison(comparison) {
   comparisonView.style.display = 'block';
+  document.getElementById('deltaDetail').style.display = 'none';
+  document.getElementById('deltaGraphView').style.display = 'none';
   
   // New Processes
   const newProcessesList = document.getElementById('newProcessesList');
@@ -985,4 +1227,430 @@ function displayComparison(comparison) {
   } else {
     newPortsList.innerHTML = '<p style="color: #999; font-size: 12px;">No new listening ports</p>';
   }
+}
+
+// --- Delta functions ---
+
+function populateDeltaDropdowns() {
+  const deltaBeforeSelect = document.getElementById('deltaBeforeSelect');
+  const deltaAfterSelect = document.getElementById('deltaAfterSelect');
+  deltaBeforeSelect.innerHTML = '<option value="">Before snapshot...</option>';
+  deltaAfterSelect.innerHTML = '<option value="">After snapshot...</option>';
+  allSnapshots.forEach(name => {
+    deltaBeforeSelect.innerHTML += `<option value="${name}">${name}</option>`;
+    deltaAfterSelect.innerHTML += `<option value="${name}">${name}</option>`;
+  });
+}
+
+async function loadDeltaList() {
+  try {
+    allDeltas = await ipcRenderer.invoke('list-deltas');
+    renderDeltaList();
+  } catch (e) { console.error('Error loading deltas:', e); }
+}
+
+function getFilteredDeltas() {
+  const fromVal = document.getElementById('deltaFilterFrom')?.value;
+  const toVal = document.getElementById('deltaFilterTo')?.value;
+  let list = allDeltas;
+  if (fromVal) {
+    const from = new Date(fromVal);
+    list = list.filter(d => !d.created_at || new Date(d.created_at) >= from);
+  }
+  if (toVal) {
+    const to = new Date(toVal);
+    list = list.filter(d => !d.created_at || new Date(d.created_at) <= to);
+  }
+  return list;
+}
+
+function renderDeltaList() {
+  const deltaList = document.getElementById('deltaList');
+  deltaList.innerHTML = '';
+  const filtered = getFilteredDeltas();
+  if (filtered.length === 0) {
+    deltaList.innerHTML = '<p class="loading">No deltas found</p>';
+    return;
+  }
+  filtered.forEach(entry => {
+    const item = document.createElement('div');
+    item.className = `snapshot-item ${entry.name === currentDelta ? 'active' : ''}`;
+    // Show a friendlier label: parse "before_vs_after_date" into readable text
+    const displayName = entry.name
+      .replace(/_vs_/g, ' → ')
+      .replace(/_(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})$/, ' ($1/$2/$3 $4:$5)');
+    item.textContent = displayName;
+    item.title = entry.name;
+    if (entry.created_at) {
+      const sub = document.createElement('span');
+      sub.className = 'delta-item-date';
+      sub.textContent = new Date(entry.created_at).toLocaleDateString();
+      item.appendChild(sub);
+    }
+    item.addEventListener('click', () => loadDelta(entry.name));
+    deltaList.appendChild(item);
+  });
+}
+
+async function loadDelta(name) {
+  try {
+    const data = await ipcRenderer.invoke('load-delta', name);
+    if (data) {
+      currentDelta = name;
+      displayDelta(data);
+      renderDeltaList();
+    }
+  } catch (e) { console.error('Error loading delta:', e); }
+}
+
+function signedNum(n) {
+  const v = typeof n === 'number' ? n : parseFloat(n);
+  if (isNaN(v)) return 'N/A';
+  return (v > 0 ? '+' : '') + v.toFixed(2);
+}
+
+function formatBytes(bytes) {
+  if (bytes == null || isNaN(bytes)) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  let val = Math.abs(bytes);
+  while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
+  return val.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
+}
+
+function signedBytes(bytes) {
+  if (bytes == null || isNaN(bytes)) return '0 B';
+  const sign = bytes >= 0 ? '+' : '-';
+  return sign + formatBytes(Math.abs(bytes));
+}
+
+function displayDelta(data) {
+  emptyState.style.display = 'none';
+  snapshotDetail.style.display = 'none';
+  document.getElementById('deltaGraphView').style.display = 'none';
+  const deltaDetail = document.getElementById('deltaDetail');
+  deltaDetail.style.display = 'flex';
+
+  document.getElementById('deltaTitle').textContent = data.metadata.delta_name || currentDelta;
+  document.getElementById('deltaTimestamp').textContent = `Created: ${new Date(data.metadata.created_at).toLocaleString()}`;
+  document.getElementById('deltaSnapshots').textContent =
+    `Before: ${data.metadata.before_snapshot}  →  After: ${data.metadata.after_snapshot}  (${data.metadata.time_diff_minutes} min apart)`;
+
+  // Category badges
+  const badgesEl = document.getElementById('deltaCategoriesBadges');
+  const cats = data.metadata.categories_compared;
+  const labels = { cpu: '💻 CPU & OS', memory: '🧠 Memory', processes: '⚙️ Processes', network: '🌐 Network', disk: '💾 Disk', users: '👤 Users' };
+  badgesEl.innerHTML = Object.entries(labels).map(([key, lbl]) =>
+    `<span class="test-badge ${cats[key] ? 'badge-on' : 'badge-off'}">${lbl}</span>`
+  ).join('');
+
+  // Build content
+  const content = document.getElementById('deltaContent');
+  content.innerHTML = '';
+
+  // CPU
+  if (data.cpu) {
+    const section = document.createElement('section');
+    section.innerHTML = `<h3>💻 CPU & OS Changes</h3>`;
+    if (data.cpu.changes.length === 0) {
+      section.innerHTML += '<p class="delta-no-change">No changes detected</p>';
+    } else {
+      data.cpu.changes.forEach(c => {
+        section.innerHTML += `<div class="delta-change-item"><strong>${c.field}</strong>: ${c.before} → ${c.after}</div>`;
+      });
+    }
+    content.appendChild(section);
+  }
+
+  // Memory
+  if (data.memory) {
+    const m = data.memory;
+    const section = document.createElement('section');
+    section.innerHTML = `
+      <h3>🧠 Memory Delta</h3>
+      <div class="delta-grid">
+        <div class="delta-stat">
+          <span class="delta-label">Used Memory</span>
+          <span class="delta-value">${m.used_before_gb} GB → ${m.used_after_gb} GB</span>
+          <span class="delta-diff ${m.used_change_gb > 0 ? 'diff-up' : m.used_change_gb < 0 ? 'diff-down' : ''}">${signedNum(m.used_change_gb)} GB</span>
+        </div>
+        <div class="delta-stat">
+          <span class="delta-label">Usage %</span>
+          <span class="delta-value">${m.used_percent_before}% → ${m.used_percent_after}%</span>
+          <span class="delta-diff ${m.used_percent_after > m.used_percent_before ? 'diff-up' : m.used_percent_after < m.used_percent_before ? 'diff-down' : ''}">${signedNum(m.used_percent_after - m.used_percent_before)}%</span>
+        </div>
+        <div class="delta-stat">
+          <span class="delta-label">Total Memory</span>
+          <span class="delta-value">${m.total_before_gb} GB → ${m.total_after_gb} GB</span>
+          <span class="delta-diff">${signedNum(m.total_change_gb)} GB</span>
+        </div>
+      </div>
+    `;
+    content.appendChild(section);
+  }
+
+  // Processes
+  if (data.processes) {
+    const p = data.processes;
+    const section = document.createElement('section');
+    section.innerHTML = `<h3>⚙️ Process Delta</h3>
+      <p style="font-size:13px;color:#666;margin-bottom:10px;">Process count: ${p.count_before} → ${p.count_after} (${signedNum(p.count_change)})</p>`;
+
+    if (p.new_processes.length > 0) {
+      let html = '<h4 class="delta-subheader">🆕 New Processes</h4>';
+      p.new_processes.slice(0, 20).forEach(proc => {
+        html += `<div class="delta-change-item warning">${proc.name} — CPU: ${proc.cpu_usage.toFixed(2)}% | Mem: ${proc.mem_usage.toFixed(2)}%</div>`;
+      });
+      if (p.new_processes.length > 20) html += `<p style="color:#999;font-size:12px;">...and ${p.new_processes.length - 20} more</p>`;
+      section.innerHTML += html;
+    }
+
+    if (p.removed_processes.length > 0) {
+      let html = '<h4 class="delta-subheader">❌ Removed Processes</h4>';
+      p.removed_processes.slice(0, 20).forEach(proc => {
+        html += `<div class="delta-change-item danger">${proc.name}</div>`;
+      });
+      if (p.removed_processes.length > 20) html += `<p style="color:#999;font-size:12px;">...and ${p.removed_processes.length - 20} more</p>`;
+      section.innerHTML += html;
+    }
+
+    if (p.changed_processes.length > 0) {
+      let html = '<h4 class="delta-subheader">📈 Changed Processes</h4>';
+      p.changed_processes.slice(0, 15).forEach(c => {
+        html += `<div class="delta-change-item">
+          <strong>${c.name}</strong><br/>
+          CPU: ${c.cpu_before.toFixed(2)}% → ${c.cpu_after.toFixed(2)}% (${signedNum(c.cpu_change)}%)<br/>
+          Mem: ${c.mem_before.toFixed(2)}% → ${c.mem_after.toFixed(2)}% (${signedNum(c.mem_change)}%)
+        </div>`;
+      });
+      section.innerHTML += html;
+    }
+
+    if (p.new_processes.length === 0 && p.removed_processes.length === 0 && p.changed_processes.length === 0) {
+      section.innerHTML += '<p class="delta-no-change">No significant process changes</p>';
+    }
+    content.appendChild(section);
+  }
+
+  // Network
+  if (data.network) {
+    const n = data.network;
+    const section = document.createElement('section');
+    section.innerHTML = `<h3>🌐 Network Delta</h3>
+      <p style="font-size:13px;color:#666;margin-bottom:10px;">Ports: ${n.port_count_before} → ${n.port_count_after} | Interfaces: ${n.interface_count_before} → ${n.interface_count_after}</p>`;
+
+    if (n.new_ports.length > 0) {
+      let html = '<h4 class="delta-subheader">🆕 New Listening Ports</h4>';
+      n.new_ports.slice(0, 15).forEach(p => {
+        html += `<div class="delta-change-item warning">${p.process_name || 'Unknown'} — ${(p.protocol || '').toUpperCase()} ${p.local_port}</div>`;
+      });
+      section.innerHTML += html;
+    }
+    if (n.removed_ports.length > 0) {
+      let html = '<h4 class="delta-subheader">❌ Removed Ports</h4>';
+      n.removed_ports.slice(0, 15).forEach(p => {
+        html += `<div class="delta-change-item danger">${p.process_name || 'Unknown'} — ${(p.protocol || '').toUpperCase()} ${p.local_port}</div>`;
+      });
+      section.innerHTML += html;
+    }
+    if (n.new_interfaces.length > 0) {
+      let html = '<h4 class="delta-subheader">🆕 New Interfaces</h4>';
+      n.new_interfaces.forEach(i => {
+        html += `<div class="delta-change-item warning">${i.iface} — ${i.ip4 || 'N/A'}</div>`;
+      });
+      section.innerHTML += html;
+    }
+    if (n.removed_interfaces.length > 0) {
+      let html = '<h4 class="delta-subheader">❌ Removed Interfaces</h4>';
+      n.removed_interfaces.forEach(i => {
+        html += `<div class="delta-change-item danger">${i.iface} — ${i.ip4 || 'N/A'}</div>`;
+      });
+      section.innerHTML += html;
+    }
+    if (n.new_ports.length === 0 && n.removed_ports.length === 0 && n.new_interfaces.length === 0 && n.removed_interfaces.length === 0) {
+      section.innerHTML += '<p class="delta-no-change">No network changes</p>';
+    }
+    content.appendChild(section);
+  }
+
+  // Disk I/O
+  if (data.disk) {
+    const d = data.disk;
+    const section = document.createElement('section');
+    section.innerHTML = `<h3>💾 Disk I/O Delta</h3>`;
+
+    if (d.drives && d.drives.length > 0) {
+      d.drives.forEach(dr => {
+        const readDiff = dr.read_bytes_per_sec_after - dr.read_bytes_per_sec_before;
+        const writeDiff = dr.write_bytes_per_sec_after - dr.write_bytes_per_sec_before;
+        section.innerHTML += `<div class="delta-change-item"><strong>${dr.name}</strong>: Read ${formatBytes(dr.read_bytes_per_sec_before)}/s → ${formatBytes(dr.read_bytes_per_sec_after)}/s (${signedBytes(readDiff)}/s) | Write ${formatBytes(dr.write_bytes_per_sec_before)}/s → ${formatBytes(dr.write_bytes_per_sec_after)}/s (${signedBytes(writeDiff)}/s)</div>`;
+      });
+    } else {
+      section.innerHTML += '<p class="delta-no-change">No disk I/O data</p>';
+    }
+    content.appendChild(section);
+  }
+
+  // Users
+  if (data.users) {
+    const u = data.users;
+    const section = document.createElement('section');
+    section.innerHTML = `<h3>👤 Users Delta</h3>
+      <p style="font-size:13px;color:#666;margin-bottom:10px;">Count: ${u.count_before} → ${u.count_after}</p>`;
+    if (u.new_users.length > 0) {
+      u.new_users.forEach(usr => {
+        section.innerHTML += `<div class="delta-change-item warning">🆕 ${usr.user}</div>`;
+      });
+    }
+    if (u.removed_users.length > 0) {
+      u.removed_users.forEach(usr => {
+        section.innerHTML += `<div class="delta-change-item danger">❌ ${usr.user}</div>`;
+      });
+    }
+    if (u.new_users.length === 0 && u.removed_users.length === 0) {
+      section.innerHTML += '<p class="delta-no-change">No user changes</p>';
+    }
+    content.appendChild(section);
+  }
+}
+
+// --- Graph rendering ---
+let activeCharts = [];
+
+function destroyCharts() {
+  activeCharts.forEach(c => c.destroy());
+  activeCharts = [];
+}
+
+async function getFilteredSnapshots() {
+  const fromVal = document.getElementById('graphFilterFrom')?.value;
+  const toVal = document.getElementById('graphFilterTo')?.value;
+  let list = await ipcRenderer.invoke('list-snapshots-with-timestamps');
+  if (fromVal) {
+    const from = new Date(fromVal);
+    list = list.filter(s => !s.timestamp || new Date(s.timestamp) >= from);
+  }
+  if (toVal) {
+    const to = new Date(toVal);
+    list = list.filter(s => !s.timestamp || new Date(s.timestamp) <= to);
+  }
+  return list;
+}
+
+async function showSnapshotGraphs(snapshotEntries) {
+  // Load all snapshot data
+  const snapshots = [];
+  for (const entry of snapshotEntries) {
+    try {
+      const data = await ipcRenderer.invoke('load-snapshot', entry.name);
+      if (data) snapshots.push({ name: entry.name, data });
+    } catch (e) { /* skip */ }
+  }
+
+  snapshots.sort((a, b) => new Date(a.data.metadata.timestamp) - new Date(b.data.metadata.timestamp));
+
+  if (snapshots.length < 2) { alert('Not enough snapshot data to graph.'); return; }
+
+  // Hide other views
+  emptyState.style.display = 'none';
+  snapshotDetail.style.display = 'none';
+  document.getElementById('deltaDetail').style.display = 'none';
+  const graphView = document.getElementById('deltaGraphView');
+  graphView.style.display = 'flex';
+
+  const fromDate = new Date(snapshots[0].data.metadata.timestamp).toLocaleString();
+  const toDate = new Date(snapshots[snapshots.length - 1].data.metadata.timestamp).toLocaleString();
+  document.getElementById('graphPeriodLabel').textContent = `${snapshots.length} snapshots from ${fromDate} to ${toDate}`;
+
+  destroyCharts();
+
+  const chartOpts = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { position: 'bottom' } },
+    scales: {
+      x: { ticks: { maxRotation: 45, font: { size: 10 } } },
+      y: { beginAtZero: false }
+    }
+  };
+
+  const makeLabel = (ts) => {
+    const t = new Date(ts);
+    return t.toLocaleDateString() + ' ' + t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Memory chart
+  const memCanvas = document.getElementById('memoryChart');
+  const memSection = memCanvas.closest('section');
+  const memData = snapshots.filter(s => s.data.system?.used_memory_gb != null);
+  if (memData.length >= 2) {
+    memSection.style.display = '';
+    activeCharts.push(new Chart(memCanvas, {
+      type: 'line',
+      data: {
+        labels: memData.map(s => makeLabel(s.data.metadata.timestamp)),
+        datasets: [
+          { label: 'Used Memory (GB)', data: memData.map(s => parseFloat(s.data.system.used_memory_gb) || 0), borderColor: '#e53935', backgroundColor: 'rgba(229,57,53,0.1)', fill: true, tension: 0.3 },
+          { label: 'Total Memory (GB)', data: memData.map(s => parseFloat(s.data.system.total_memory_gb) || 0), borderColor: '#1e88e5', borderDash: [5, 5], fill: false, tension: 0.3 },
+        ]
+      },
+      options: chartOpts
+    }));
+  } else { memSection.style.display = 'none'; }
+
+  // Process chart
+  const procCanvas = document.getElementById('processChart');
+  const procSection = procCanvas.closest('section');
+  const procData = snapshots.filter(s => s.data.running_processes);
+  if (procData.length >= 2) {
+    procSection.style.display = '';
+    activeCharts.push(new Chart(procCanvas, {
+      type: 'line',
+      data: {
+        labels: procData.map(s => makeLabel(s.data.metadata.timestamp)),
+        datasets: [
+          { label: 'Process Count', data: procData.map(s => s.data.running_processes.length), borderColor: '#43a047', backgroundColor: 'rgba(67,160,71,0.1)', fill: true, tension: 0.3 },
+        ]
+      },
+      options: chartOpts
+    }));
+  } else { procSection.style.display = 'none'; }
+
+  // Network chart
+  const netCanvas = document.getElementById('networkChart');
+  const netSection = netCanvas.closest('section');
+  const netData = snapshots.filter(s => s.data.network?.listening_ports);
+  if (netData.length >= 2) {
+    netSection.style.display = '';
+    activeCharts.push(new Chart(netCanvas, {
+      type: 'line',
+      data: {
+        labels: netData.map(s => makeLabel(s.data.metadata.timestamp)),
+        datasets: [
+          { label: 'Listening Ports', data: netData.map(s => s.data.network.listening_ports.length), borderColor: '#7b1fa2', backgroundColor: 'rgba(123,31,162,0.1)', fill: true, tension: 0.3 },
+          { label: 'Interfaces', data: netData.map(s => (s.data.network.interfaces || []).length), borderColor: '#0097a7', fill: false, tension: 0.3 },
+        ]
+      },
+      options: chartOpts
+    }));
+  } else { netSection.style.display = 'none'; }
+
+  // Disk I/O chart
+  const diskCanvas = document.getElementById('diskChart');
+  const diskSection = diskCanvas.closest('section');
+  const diskData = snapshots.filter(s => s.data.system?.disk_io && s.data.system.disk_io.length > 0);
+  if (diskData.length >= 2) {
+    diskSection.style.display = '';
+    activeCharts.push(new Chart(diskCanvas, {
+      type: 'line',
+      data: {
+        labels: diskData.map(s => makeLabel(s.data.metadata.timestamp)),
+        datasets: [
+          { label: 'Read (B/s)', data: diskData.map(s => s.data.system.disk_io.reduce((t, d) => t + (d.read_bytes_per_sec || 0), 0)), borderColor: '#00897b', backgroundColor: 'rgba(0,137,123,0.1)', fill: true, tension: 0.3 },
+          { label: 'Write (B/s)', data: diskData.map(s => s.data.system.disk_io.reduce((t, d) => t + (d.write_bytes_per_sec || 0), 0)), borderColor: '#e53935', backgroundColor: 'rgba(229,57,53,0.1)', fill: true, tension: 0.3 },
+        ]
+      },
+      options: chartOpts
+    }));
+  } else { diskSection.style.display = 'none'; }
 }
