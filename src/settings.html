@@ -1,0 +1,176 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settings - System Snapshot Viewer</title>
+  <link rel="stylesheet" href="index.css" />
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>System Snapshot Viewer</h1>
+      <p class="subtitle">View and manage system snapshots</p>
+      <div class="header-actions">
+        <a href="index.html" class="btn btn-upload">Back</a>
+      </div>
+    </header>
+
+    <div class="main-content" id="mainContent">
+      <button class="sidebar-toggle" id="sidebarToggle" onclick="document.getElementById('mainContent').classList.toggle('sidebar-collapsed')">
+        <span class="sidebar-toggle-icon">‹</span>
+      </button>
+      <div class="sidebar">
+        <div class="snapshot-controls">
+          <button id="newSnapshotBtn" class="btn btn-primary">Take New Snapshot</button>
+          <input type="text" id="snapshotName" placeholder="Enter snapshot name..." class="input-field" />
+        </div>
+
+        <div class="snapshot-list-container">
+          <div id="snapshotList" class="snapshot-list">
+            <p class="loading">Loading snapshots...</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="main-view">
+        <div class="snapshot-detail settings-page">
+          <div class="detail-header">
+            <div>
+              <h2>Settings</h2>
+              <p class="timestamp">Application Preferences & Configuration</p>
+            </div>
+            <div class="header-buttons">
+              <button id="saveSettingsBtn" class="btn btn-primary">Save</button>
+              <a href="index.html" class="btn btn-upload">Cancel</a>
+            </div>
+          </div>
+
+          <div class="detail-content">
+            <section>
+              <h3>Automatic Snapshots</h3>
+              <div class="info-panel settings-form">
+                <div class="info-row">
+                  <span class="info-label">Automatic Snapshots</span>
+                  <div class="info-value">
+                    <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="autoSnapshotsToggle" /> Enable automatic snapshots</label>
+                  </div>
+                </div>
+
+                <div class="info-row">
+                  <span class="info-label">Interval (minutes)</span>
+                  <div class="info-value">
+                    <input id="autoInterval" type="number" class="input-field" min="1" max="1440" value="5" style="max-width:120px;" />
+                    <div style="font-family:'Space Mono',monospace;color:var(--text-3);font-size:12px;margin-left:12px;">How often to take automatic snapshots (1–1440 min)</div>
+                  </div>
+                </div>
+
+                <div class="info-row">
+                  <span class="info-label">Status</span>
+                  <span id="autoStatus" class="info-value">Auto-snapshots: Off</span>
+                </div>
+
+                <div class="info-row">
+                  <span class="info-label">Max Snapshots to Keep</span>
+                  <div class="info-value">
+                    <input id="maxSnapshots" type="number" class="input-field" min="0" value="0" style="max-width:120px;" />
+                    <div style="font-family:'Space Mono',monospace;color:var(--text-3);font-size:12px;margin-left:12px;">Oldest unpinned snapshots are auto-deleted when this limit is exceeded. Set to 0 for unlimited.</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h3>Include in snapshot</h3>
+              <div class="info-panel settings-form">
+                <div class="info-row">
+                  <div style="display:flex;flex-wrap:wrap;gap:12px;">
+                    <label><input type="checkbox" class="include-check" id="incCpu" checked /> CPU &amp; OS</label>
+                    <label><input type="checkbox" class="include-check" id="incMemory" checked /> Memory</label>
+                    <label><input type="checkbox" class="include-check" id="incProcesses" checked /> Processes</label>
+                    <label><input type="checkbox" class="include-check" id="incNetwork" checked /> Network</label>
+                    <label><input type="checkbox" class="include-check" id="incDisk" checked /> Disk &amp; FS</label>
+                    <label><input type="checkbox" class="include-check" id="incUsers" checked /> Users</label>
+                  </div>
+                </div>
+                <div class="info-row">
+                  <div style="font-family:'Space Mono',monospace;color:var(--text-3);font-size:12px;">Select which categories to collect in snapshots</div>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h3>Data Folder</h3>
+              <div class="info-panel settings-form">
+                <div class="info-row">
+                  <span class="info-label">Location</span>
+                  <div class="info-value">
+                    <div id="dataFolderPath" style="font-family:'Space Mono',monospace;">/Users/lizzieboles/Library/Application Support/snapshot-tool</div>
+                  </div>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Actions</span>
+                  <div class="info-value">
+                    <button id="openFolderBtn" class="btn btn-upload">📂 Open</button>
+                    <button id="moveFolderBtn" class="btn btn-upload">📁 Move</button>
+                    <button id="resetFolderBtn" class="btn btn-danger">↩️ Reset</button>
+                  </div>
+                </div>
+                <div class="info-row">
+                  <div style="font-family:'Space Mono',monospace;color:var(--text-3);font-size:12px;margin-left:220px;">Where snapshot files are stored on disk</div>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h3>About</h3>
+              <div class="info-panel">
+                <div class="info-row">
+                  <span class="info-label">Version</span>
+                  <span class="info-value">1.0.0</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Build</span>
+                  <span class="info-value">local</span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+  <script>
+    // Settings page interactivity (mock)
+    document.addEventListener('DOMContentLoaded', function () {
+      const toggle = document.getElementById('autoSnapshotsToggle');
+      const status = document.getElementById('autoStatus');
+      const interval = document.getElementById('autoInterval');
+
+      function updateStatus() {
+        if (toggle && status) status.textContent = toggle.checked ? ('Auto-snapshots: On — every ' + (interval.value || '0') + ' min') : 'Auto-snapshots: Off';
+      }
+
+      if (toggle) toggle.addEventListener('change', updateStatus);
+      if (interval) interval.addEventListener('input', function () {
+        // clamp
+        const v = Math.max(1, Math.min(1440, Number(interval.value || 1)));
+        interval.value = v;
+        updateStatus();
+      });
+
+      // Folder actions are mock — open/move/reset will show alerts. In a real app these would call native APIs.
+      const openBtn = document.getElementById('openFolderBtn');
+      if (openBtn) openBtn.addEventListener('click', function () { alert('Open data folder (mock)'); });
+      const moveBtn = document.getElementById('moveFolderBtn');
+      if (moveBtn) moveBtn.addEventListener('click', function () { alert('Move data folder (mock)'); });
+      const resetBtn = document.getElementById('resetFolderBtn');
+      if (resetBtn) resetBtn.addEventListener('click', function () { if (confirm('Reset data folder to default?')) alert('Data folder reset (mock)'); });
+
+      // initialize status
+      updateStatus();
+    });
+  </script>
+</body>
+
+</html>

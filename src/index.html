@@ -13,6 +13,9 @@
     <header>
       <h1>System Snapshot Viewer</h1>
       <p class="subtitle">View and manage system snapshots</p>
+      <div class="header-actions">
+        <button id="settingsBtn" class="btn btn-upload">Settings</button>
+      </div>
     </header>
 
     <div class="main-content" id="mainContent">
@@ -138,9 +141,132 @@
             </section>
           </div>
         </div>
+
+        <!-- Settings Page (mirrors snapshot detail layout) -->
+        <div id="settingsPage" class="snapshot-detail settings-page" style="display: none;">
+          <div class="detail-header">
+            <div>
+              <h2>Settings</h2>
+              <p class="timestamp">Application Preferences & Configuration</p>
+            </div>
+            <div class="header-buttons">
+              <button id="saveSettingsBtn" class="btn btn-primary">Save</button>
+              <button id="resetSettingsBtn" class="btn btn-upload">Reset</button>
+            </div>
+          </div>
+
+          <div class="detail-content">
+            <section>
+              <h3>General</h3>
+              <div class="info-panel settings-form">
+                <div class="info-row">
+                  <span class="info-label">Application Theme</span>
+                  <div class="info-value">
+                    <select id="appTheme" class="input-field" style="max-width:200px;">
+                      <option value="dark">Dark</option>
+                      <option value="light">Light</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Auto-refresh</span>
+                  <div class="info-value">
+                    <label><input type="checkbox" id="autoRefresh" /> Enable auto-refresh snapshots</label>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h3>Integrations</h3>
+              <div class="info-panel settings-form">
+                <div class="info-row">
+                  <span class="info-label">Remote Upload URL</span>
+                  <input id="uploadUrl" class="input-field" placeholder="https://example.com/upload" />
+                </div>
+                <div class="info-row">
+                  <span class="info-label">API Token</span>
+                  <input id="apiToken" class="input-field" placeholder="••••••••" />
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h3>About</h3>
+              <div class="info-panel">
+                <div class="info-row">
+                  <span class="info-label">Version</span>
+                  <span class="info-value">1.0.0</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Build</span>
+                  <span class="info-value">local</span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      // Hash-based view router. Settings is its own page at #settings
+      function renderFromHash() {
+        const hash = location.hash || '#';
+        const isSettings = hash === '#settings';
+
+        const sd = document.getElementById('snapshotDetail');
+        const es = document.getElementById('emptyState');
+        const sp = document.getElementById('settingsPage');
+
+        // Show settings page exclusively when hash is #settings
+        if (sd) sd.style.display = isSettings ? 'none' : (document.querySelector('.snapshot-item.active') ? 'flex' : 'none');
+        if (es) es.style.display = isSettings ? 'none' : (document.querySelector('.snapshot-item.active') ? 'none' : 'flex');
+        if (sp) sp.style.display = isSettings ? 'flex' : 'none';
+
+        // update title for clarity
+        document.title = isSettings ? 'Settings - System Snapshot Viewer' : 'System Snapshot Viewer';
+      }
+
+      // initial render and listen for hash changes
+      window.addEventListener('hashchange', renderFromHash);
+      renderFromHash();
+
+      const settingsBtn = document.getElementById('settingsBtn');
+      if (settingsBtn) settingsBtn.addEventListener('click', function () { location.href = 'settings.html'; });
+
+      // clicking a snapshot selects it and navigates to its hash (acts as separate page)
+      const snapshotList = document.getElementById('snapshotList');
+      if (snapshotList) {
+        snapshotList.addEventListener('click', function (e) {
+          const item = e.target.closest('.snapshot-item');
+          if (!item) return;
+          document.querySelectorAll('.snapshot-item').forEach(i => i.classList.remove('active'));
+          item.classList.add('active');
+          const id = item.getAttribute('data-id') || '';
+          location.hash = id ? ('#snapshot-' + id) : '#';
+        });
+      }
+
+      // basic save/reset handlers (no backend)
+      const saveBtn = document.getElementById('saveSettingsBtn');
+      if (saveBtn) saveBtn.addEventListener('click', function () { alert('Settings saved (mock)'); });
+
+      const resetBtn = document.getElementById('resetSettingsBtn');
+      if (resetBtn) resetBtn.addEventListener('click', function () {
+        if (confirm('Reset settings to defaults?')) {
+          const appTheme = document.getElementById('appTheme'); if (appTheme) appTheme.value = 'dark';
+          const autoRefresh = document.getElementById('autoRefresh'); if (autoRefresh) autoRefresh.checked = false;
+          const uploadUrl = document.getElementById('uploadUrl'); if (uploadUrl) uploadUrl.value = '';
+          const apiToken = document.getElementById('apiToken'); if (apiToken) apiToken.value = '';
+          alert('Settings reset (mock)');
+        }
+      });
+    });
+  </script>
 </body>
 
 </html>

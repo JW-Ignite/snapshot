@@ -552,6 +552,12 @@ section h3::after {
   width: auto;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* ══════════════════════════════════════ */
 /* COMPARISON                             */
 /* ══════════════════════════════════════ */
@@ -754,4 +760,30 @@ section h3::after {
   font-size: 14px;
   font-weight: 500;
   color: var(--text);
+}
+
+/* SETTINGS PAGE */
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.settings-form .info-row {
+  align-items: center;
+}
+
+.settings-form .info-label {
+  width: 220px;
+}
+
+.settings-form .info-value {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ensure header-buttons spacing when Settings is active */
+.header-buttons {
+  gap: 8px;
 }
