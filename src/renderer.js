@@ -45,11 +45,23 @@ if (typeof window !== 'undefined' && window.require) {
 
 let currentSnapshot = null;
 let allSnapshots = [];
+let currentDelta = null;
+let allDeltas = [];
+let activeTab = 'snapshots';
+let deltasFeatureAvailable = true;
+let hasShownDeltasRestartNotice = false;
+let lastTrendPoints = [];
 
 // DOM Elements
 let newSnapshotBtn, snapshotNameInput, snapshotList, emptyState, snapshotDetail;
 let detailTitle, detailTimestamp, deleteBtn, processSearch, processList;
 let compareSelect, compareBtn, comparisonView, integrityInfo, uploadBtn;
+let deltaList, snapshotsTabBtn, deltasTabBtn;
+let deltaCompareControls, deltaBeforeSelect, deltaAfterSelect, deltaCreateBtn;
+let trendStartDate, trendEndDate, trendGenerateBtn, trendAnalyticsPanel;
+let trendPreset24hBtn, trendPreset7dBtn;
+let fileSearchPathInput, fileSearchNameInput, fileSearchRegistryInput, fileSearchVersionInput;
+let fileSearchRunBtn, fileSearchResult;
 
 // Build the UI programmatically if HTML isn't present
 function buildUI() {
@@ -108,6 +120,18 @@ function buildUI() {
               <p class="setting-desc">Select which categories to collect in snapshots</p>
             </div>
             <div class="setting-item">
+              <p class="setting-label"><span>Compare categories:</span></p>
+              <div class="test-selector">
+                <label class="test-option"><input type="checkbox" id="compare-cpu"       checked>  CPU</label>
+                <label class="test-option"><input type="checkbox" id="compare-memory"    checked>  Memory</label>
+                <label class="test-option"><input type="checkbox" id="compare-processes" checked>  Processes</label>
+                <label class="test-option"><input type="checkbox" id="compare-network"   checked>  Network</label>
+                <label class="test-option"><input type="checkbox" id="compare-disk"      checked>  Disk</label>
+                <label class="test-option"><input type="checkbox" id="compare-users"     checked>  Users</label>
+              </div>
+              <p class="setting-desc">Choose what delta calculations include (After - Before)</p>
+            </div>
+            <div class="setting-item">
               <p class="setting-label"><span>Data Folder</span></p>
               <div id="dataFolderPath" class="data-folder-path">Loading...</div>
               <div class="data-folder-buttons">
@@ -139,19 +163,64 @@ function buildUI() {
           </div>
 
           <div class="snapshot-list-container">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-              <h2 style="margin:0;">Saved Snapshots</h2>
+            <div class="list-tabs" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; gap: 8px;">
+              <div style="display:flex; gap:6px;">
+                <button id="snapshotsTabBtn" class="btn btn-small btn-primary">Snapshots</button>
+                <button id="deltasTabBtn" class="btn btn-small">Deltas</button>
+              </div>
               <button id="wipeAllBtn" class="btn btn-danger" style="font-size:11px; padding:5px 10px;" title="Delete all snapshots">Wipe All</button>
+            </div>
+            <div id="deltaCompareControls" style="display:none; margin-bottom:10px;">
+              <select id="deltaBeforeSelect" class="input-field" style="margin-bottom:6px;">
+                <option value="">Before snapshot...</option>
+              </select>
+              <select id="deltaAfterSelect" class="input-field" style="margin-bottom:6px;">
+                <option value="">After snapshot...</option>
+              </select>
+              <button id="deltaCreateBtn" class="btn btn-primary" style="width:100%;">Compare 2 Files</button>
+              <div style="margin-top:10px; border-top:1px solid rgba(255,255,255,0.12); padding-top:10px;">
+                <label style="font-size:11px; color:#aaa; display:block; margin-bottom:4px;">Start (date + time)</label>
+                <input id="trendStartDate" type="datetime-local" class="input-field" step="60" style="margin-bottom:6px;" />
+                <label style="font-size:11px; color:#aaa; display:block; margin-bottom:4px;">End (date + time)</label>
+                <input id="trendEndDate" type="datetime-local" class="input-field" step="60" style="margin-bottom:6px;" />
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:6px;">
+                  <button id="trendPreset24h" class="btn btn-small">Last 24h</button>
+                  <button id="trendPreset7d" class="btn btn-small">Last 7d</button>
+                </div>
+                <button id="trendGenerateBtn" class="btn btn-primary" style="width:100%;">Generate Trend Graph</button>
+              </div>
             </div>
             <div id="snapshotList" class="snapshot-list">
               <p class="loading">Loading snapshots...</p>
+            </div>
+            <div id="deltaList" class="snapshot-list" style="display:none;">
+              <p class="loading">Loading deltas...</p>
             </div>
           </div>
         </div>
 
         <div class="main-view">
+          <div id="fileSearchPanel" class="comparison-view" style="margin-bottom: 18px;">
+            <h3>File Search</h3>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:8px; margin-bottom: 8px;">
+              <input id="fileSearchPath" class="input-field" placeholder="File path or folder path" />
+              <input id="fileSearchName" class="input-field" placeholder="File name (e.g. app.exe)" />
+              <input id="fileSearchRegistry" class="input-field" placeholder="Registry key (e.g. HKLM\\Software\\...)" />
+              <input id="fileSearchVersion" class="input-field" placeholder="Expected version (e.g. 1.2.3.4)" />
+            </div>
+            <button id="fileSearchRunBtn" class="btn btn-primary" style="margin-bottom:10px;">Run File Search</button>
+            <div id="fileSearchResult" class="comparison-list"></div>
+          </div>
+
           <div id="emptyState" class="empty-state">
             <p>Select a snapshot to view details</p>
+          </div>
+
+          <div id="trendAnalyticsPanel" class="comparison-view" style="display:none; margin-bottom: 18px;">
+            <h3>Trend Analytics</h3>
+            <p id="trendSummaryText" style="color:#aaa; font-size:12px; margin-bottom:10px;">Pick a date range and generate a graph.</p>
+            <div id="trendOverallChanges" class="comparison-list" style="margin-bottom:10px;"></div>
+            <div id="trendChartsContainer" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:10px;"></div>
           </div>
 
           <div id="snapshotDetail" class="snapshot-detail" style="display: none;">
@@ -164,9 +233,9 @@ function buildUI() {
               </div>
               <div class="header-buttons">
                 <select id="compareSelect" class="input-field" style="max-width: 200px;">
-                  <option value="">Compare with...</option>
+                  <option value="">After snapshot...</option>
                 </select>
-                <button id="compareBtn" class="btn btn-primary">Compare</button>
+                <button id="compareBtn" class="btn btn-primary">Save Delta</button>
                 <button id="uploadBtn" class="btn btn-upload">Upload</button>
                 <button id="deleteBtn" class="btn btn-danger">Delete</button>
               </div>
@@ -190,6 +259,10 @@ function buildUI() {
                 <div class="comparison-card">
                   <h4>New Listening Ports</h4>
                   <div id="newPortsList" class="comparison-list"></div>
+                </div>
+                <div class="comparison-card">
+                  <h4>Overall Changes</h4>
+                  <div id="overallChangesList" class="comparison-list"></div>
                 </div>
               </div>
             </div>
@@ -305,7 +378,122 @@ function initializeApp() {
   comparisonView = document.getElementById('comparisonView');
   integrityInfo = document.getElementById('integrityInfo');
   uploadBtn = document.getElementById('uploadBtn');
+  deltaList = document.getElementById('deltaList');
+  snapshotsTabBtn = document.getElementById('snapshotsTabBtn');
+  deltasTabBtn = document.getElementById('deltasTabBtn');
+  deltaCompareControls = document.getElementById('deltaCompareControls');
+  deltaBeforeSelect = document.getElementById('deltaBeforeSelect');
+  deltaAfterSelect = document.getElementById('deltaAfterSelect');
+  deltaCreateBtn = document.getElementById('deltaCreateBtn');
+  trendStartDate = document.getElementById('trendStartDate');
+  trendEndDate = document.getElementById('trendEndDate');
+  trendGenerateBtn = document.getElementById('trendGenerateBtn');
+  trendAnalyticsPanel = document.getElementById('trendAnalyticsPanel');
+  trendPreset24hBtn = document.getElementById('trendPreset24h');
+  trendPreset7dBtn = document.getElementById('trendPreset7d');
+  fileSearchPathInput = document.getElementById('fileSearchPath');
+  fileSearchNameInput = document.getElementById('fileSearchName');
+  fileSearchRegistryInput = document.getElementById('fileSearchRegistry');
+  fileSearchVersionInput = document.getElementById('fileSearchVersion');
+  fileSearchRunBtn = document.getElementById('fileSearchRunBtn');
+  fileSearchResult = document.getElementById('fileSearchResult');
   const pinBtn = document.getElementById('pinBtn');
+
+  function toDateTimeLocalValue(dt) {
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const d = String(dt.getDate()).padStart(2, '0');
+    const hh = String(dt.getHours()).padStart(2, '0');
+    const mm = String(dt.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d}T${hh}:${mm}`;
+  }
+
+  function setTrendRange(hoursBack) {
+    const end = new Date();
+    const start = new Date(end.getTime() - (hoursBack * 60 * 60 * 1000));
+    if (trendStartDate) trendStartDate.value = toDateTimeLocalValue(start);
+    if (trendEndDate) trendEndDate.value = toDateTimeLocalValue(end);
+  }
+
+  setTrendRange(24 * 7);
+
+  function renderFileSearchResult(result) {
+    if (!fileSearchResult) return;
+    if (!result) {
+      fileSearchResult.innerHTML = '<div class="comparison-item">No result returned.</div>';
+      return;
+    }
+    if (result.error) {
+      fileSearchResult.innerHTML = `<div class="comparison-item danger">Error: ${result.error}</div>`;
+      return;
+    }
+
+    const status = (ok) => ok === true ? 'Match' : (ok === false ? 'No Match' : 'Not Checked');
+    const boolBadge = (ok) => ok === true ? 'warning' : (ok === false ? 'danger' : '');
+
+    const lines = [
+      { label: 'File Found', value: status(result.file?.found), raw: result.file?.found },
+      { label: 'Resolved Path', value: result.file?.resolved_path || 'N/A' },
+      { label: 'Searched Locations', value: Array.isArray(result.file?.searched_locations) && result.file.searched_locations.length > 0 ? result.file.searched_locations.join(' | ') : 'N/A' },
+      { label: 'File Name Match', value: status(result.file?.file_name_matches), raw: result.file?.file_name_matches },
+      { label: 'File Size', value: result.file?.metadata ? `${result.file.metadata.size_bytes} bytes (${result.file.metadata.size_mb} MB)` : 'N/A' },
+      { label: 'Created', value: result.file?.metadata?.created_at || 'N/A' },
+      { label: 'Last Modified', value: result.file?.metadata?.modified_at || 'N/A' },
+      { label: 'Last Accessed', value: result.file?.metadata?.accessed_at || 'N/A' },
+      { label: 'SHA256', value: result.file?.metadata?.sha256 || 'N/A' },
+      { label: 'MD5', value: result.file?.metadata?.md5 || 'N/A' },
+      { label: 'Product Name', value: result.file?.metadata?.windows_version_info?.ProductName || 'N/A' },
+      { label: 'Company', value: result.file?.metadata?.windows_version_info?.CompanyName || 'N/A' },
+      { label: 'File Version', value: result.file?.metadata?.windows_version_info?.FileVersion || result.version?.actual || 'N/A' },
+      { label: 'Product Version', value: result.file?.metadata?.windows_version_info?.ProductVersion || 'N/A' },
+      { label: 'Version Match', value: status(result.version?.matches), raw: result.version?.matches },
+      { label: 'Actual Version', value: result.version?.actual || 'N/A' },
+      { label: 'Registry Key Match', value: status(result.registry?.matches), raw: result.registry?.matches },
+    ];
+
+    const errors = [result.version?.error, result.registry?.error, result.file?.metadata_error].filter(Boolean);
+    const lineHtml = lines.map(line => `<div class="comparison-item ${boolBadge(line.raw)}"><strong>${line.label}:</strong> ${line.value}</div>`).join('');
+    const errorHtml = errors.map(msg => `<div class="comparison-item danger">${msg}</div>`).join('');
+    fileSearchResult.innerHTML = lineHtml + errorHtml;
+  }
+
+  async function runFileSearch() {
+    if (!ipcRenderer) return;
+    const criteria = {
+      filePath: fileSearchPathInput?.value || '',
+      fileName: fileSearchNameInput?.value || '',
+      registryKey: fileSearchRegistryInput?.value || '',
+      version: fileSearchVersionInput?.value || '',
+    };
+
+    if (!criteria.filePath && !criteria.fileName && !criteria.registryKey && !criteria.version) {
+      renderFileSearchResult({ error: 'Enter at least one field to search.' });
+      return;
+    }
+
+    fileSearchRunBtn.disabled = true;
+    fileSearchRunBtn.textContent = 'Checking...';
+    try {
+      const result = await ipcRenderer.invoke('file-search-check', criteria);
+      renderFileSearchResult(result);
+    } catch (e) {
+      renderFileSearchResult({ error: e.message || 'File search failed.' });
+    } finally {
+      fileSearchRunBtn.disabled = false;
+      fileSearchRunBtn.textContent = 'Run File Search';
+    }
+  }
+
+  if (fileSearchRunBtn) fileSearchRunBtn.addEventListener('click', runFileSearch);
+  [fileSearchPathInput, fileSearchNameInput, fileSearchRegistryInput, fileSearchVersionInput].forEach((el) => {
+    if (!el) return;
+    el.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        runFileSearch();
+      }
+    });
+  });
 
   // Test selector checkboxes
   const testCheckboxes = {
@@ -315,6 +503,15 @@ function initializeApp() {
     network:   document.getElementById('test-network'),
     disk:      document.getElementById('test-disk'),
     users:     document.getElementById('test-users'),
+  };
+
+  const compareCheckboxes = {
+    cpu:       document.getElementById('compare-cpu'),
+    memory:    document.getElementById('compare-memory'),
+    processes: document.getElementById('compare-processes'),
+    network:   document.getElementById('compare-network'),
+    disk:      document.getElementById('compare-disk'),
+    users:     document.getElementById('compare-users'),
   };
 
   // Load saved test defaults
@@ -333,6 +530,25 @@ function initializeApp() {
       const tests = {};
       Object.entries(testCheckboxes).forEach(([k, cb]) => { tests[k] = cb?.checked ?? true; });
       await ipcRenderer.invoke('set-test-defaults', tests);
+    });
+  });
+
+  // Load saved compare defaults
+  (async () => {
+    try {
+      const defaults = await ipcRenderer.invoke('get-compare-defaults');
+      Object.entries(defaults).forEach(([key, val]) => {
+        if (compareCheckboxes[key]) compareCheckboxes[key].checked = val;
+      });
+    } catch (e) { console.error('Failed to load compare defaults:', e); }
+  })();
+
+  // Save compare defaults when any compare checkbox changes
+  Object.entries(compareCheckboxes).forEach(([key, el]) => {
+    if (el) el.addEventListener('change', async () => {
+      const categories = {};
+      Object.entries(compareCheckboxes).forEach(([k, cb]) => { categories[k] = cb?.checked ?? true; });
+      await ipcRenderer.invoke('set-compare-defaults', categories);
     });
   });
 
@@ -388,6 +604,10 @@ newSnapshotBtn.addEventListener('click', () => {
 });
 
   if (deleteBtn) deleteBtn.addEventListener('click', () => {
+    if (activeTab === 'deltas' && currentDelta) {
+      deleteDelta(currentDelta);
+      return;
+    }
     if (currentSnapshot) {
       deleteSnapshot(currentSnapshot);
     }
@@ -395,6 +615,7 @@ newSnapshotBtn.addEventListener('click', () => {
 
   const wipeAllBtn = document.getElementById('wipeAllBtn');
   if (wipeAllBtn) wipeAllBtn.addEventListener('click', async () => {
+    if (activeTab !== 'snapshots') return;
     const count = allSnapshots.length;
     if (count === 0) { alert('No snapshots to delete.'); return; }
     if (!confirm(`Are you sure you want to permanently delete all ${count} snapshot(s)? This cannot be undone.`)) return;
@@ -410,11 +631,137 @@ newSnapshotBtn.addEventListener('click', () => {
     }
   });
 
+  if (snapshotsTabBtn) snapshotsTabBtn.addEventListener('click', () => switchTab('snapshots'));
+  if (deltasTabBtn) deltasTabBtn.addEventListener('click', () => switchTab('deltas'));
+
+  if (deltaCreateBtn) deltaCreateBtn.addEventListener('click', async () => {
+    if (!deltasFeatureAvailable) {
+      notifyDeltasNeedsRestart();
+      return;
+    }
+
+    const beforeName = deltaBeforeSelect?.value;
+    const afterName = deltaAfterSelect?.value;
+
+    if (!beforeName || !afterName) {
+      alert('Select both Before and After snapshot files.');
+      return;
+    }
+
+    if (beforeName === afterName) {
+      alert('Choose two different snapshot files.');
+      return;
+    }
+
+    const selectedCategories = {};
+    Object.entries(compareCheckboxes).forEach(([k, cb]) => { selectedCategories[k] = cb?.checked ?? true; });
+    if (!Object.values(selectedCategories).some(Boolean)) {
+      alert('Please select at least one compare category in Settings.');
+      return;
+    }
+
+    try {
+      deltaCreateBtn.disabled = true;
+      deltaCreateBtn.textContent = 'Creating Delta...';
+      const result = await ipcRenderer.invoke('compare-snapshots', beforeName, afterName, selectedCategories, true);
+      if (!result) {
+        alert('Failed to create delta.');
+        return;
+      }
+
+      await loadDeltaList();
+      switchTab('deltas');
+      if (result.delta_name) {
+        await loadDelta(result.delta_name);
+      }
+    } catch (e) {
+      if (isMissingHandlerError(e, 'compare-snapshots')) {
+        deltasFeatureAvailable = false;
+        notifyDeltasNeedsRestart();
+        return;
+      }
+      console.error('Error creating delta from deltas tab:', e);
+      alert(`Error creating delta: ${e.message}`);
+    } finally {
+      deltaCreateBtn.disabled = false;
+      deltaCreateBtn.textContent = 'Compare 2 Files';
+    }
+  });
+
+  if (trendGenerateBtn) trendGenerateBtn.addEventListener('click', async () => {
+    try {
+      const startDate = trendStartDate?.value;
+      const endDate = trendEndDate?.value;
+      if (!startDate || !endDate) {
+        alert('Choose both start and end dates.');
+        return;
+      }
+
+      const startTs = new Date(startDate).getTime();
+      const endTs = new Date(endDate).getTime();
+      if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) {
+        alert('Invalid date/time range.');
+        return;
+      }
+      if (endTs < startTs) {
+        alert('End date must be after start date.');
+        return;
+      }
+
+      trendGenerateBtn.disabled = true;
+      trendGenerateBtn.textContent = 'Generating...';
+      await generateTrendAnalytics(startTs, endTs);
+    } catch (e) {
+      console.error('Error generating trend analytics:', e);
+      alert(`Trend generation failed: ${e.message}`);
+    } finally {
+      trendGenerateBtn.disabled = false;
+      trendGenerateBtn.textContent = 'Generate Trend Graph';
+    }
+  });
+
+  if (trendPreset24hBtn) trendPreset24hBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    const end = new Date();
+    const start = new Date(end.getTime() - (24 * 60 * 60 * 1000));
+    const y1 = start.getFullYear();
+    const m1 = String(start.getMonth() + 1).padStart(2, '0');
+    const d1 = String(start.getDate()).padStart(2, '0');
+    const hh1 = String(start.getHours()).padStart(2, '0');
+    const mm1 = String(start.getMinutes()).padStart(2, '0');
+    const y2 = end.getFullYear();
+    const m2 = String(end.getMonth() + 1).padStart(2, '0');
+    const d2 = String(end.getDate()).padStart(2, '0');
+    const hh2 = String(end.getHours()).padStart(2, '0');
+    const mm2 = String(end.getMinutes()).padStart(2, '0');
+    if (trendStartDate) trendStartDate.value = `${y1}-${m1}-${d1}T${hh1}:${mm1}`;
+    if (trendEndDate) trendEndDate.value = `${y2}-${m2}-${d2}T${hh2}:${mm2}`;
+  });
+
+  if (trendPreset7dBtn) trendPreset7dBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    const end = new Date();
+    const start = new Date(end.getTime() - (7 * 24 * 60 * 60 * 1000));
+    const y1 = start.getFullYear();
+    const m1 = String(start.getMonth() + 1).padStart(2, '0');
+    const d1 = String(start.getDate()).padStart(2, '0');
+    const hh1 = String(start.getHours()).padStart(2, '0');
+    const mm1 = String(start.getMinutes()).padStart(2, '0');
+    const y2 = end.getFullYear();
+    const m2 = String(end.getMonth() + 1).padStart(2, '0');
+    const d2 = String(end.getDate()).padStart(2, '0');
+    const hh2 = String(end.getHours()).padStart(2, '0');
+    const mm2 = String(end.getMinutes()).padStart(2, '0');
+    if (trendStartDate) trendStartDate.value = `${y1}-${m1}-${d1}T${hh1}:${mm1}`;
+    if (trendEndDate) trendEndDate.value = `${y2}-${m2}-${d2}T${hh2}:${mm2}`;
+  });
+
   if (processSearch) processSearch.addEventListener('input', (e) => {
     filterProcesses(e.target.value.toLowerCase());
   });
 
   if (compareBtn) compareBtn.addEventListener('click', () => {
+    if (activeTab !== 'snapshots') return;
     const selectedSnapshot = compareSelect.value;
     if (selectedSnapshot) {
       performComparison(currentSnapshot, selectedSnapshot);
@@ -596,18 +943,75 @@ newSnapshotBtn.addEventListener('click', () => {
   // Load snapshots on startup
   console.log('Loading snapshot list...');
   loadSnapshotList();
+  loadDeltaList();
+  switchTab('snapshots');
 }
 
 // Load all saved snapshots
 async function loadSnapshotList() {
   try {
     allSnapshots = await ipcRenderer.invoke('list-snapshots');
+    refreshDeltaCompareSelects();
     await renderSnapshotList();
     if (allSnapshots.length === 0) {
       snapshotList.innerHTML = '<p class="loading">No snapshots yet</p>';
     }
   } catch (e) {
     console.error('Error loading snapshots:', e);
+  }
+}
+
+function refreshDeltaCompareSelects() {
+  if (!deltaBeforeSelect || !deltaAfterSelect) return;
+
+  const beforeValue = deltaBeforeSelect.value;
+  const afterValue = deltaAfterSelect.value;
+
+  deltaBeforeSelect.innerHTML = '<option value="">Before snapshot...</option>';
+  deltaAfterSelect.innerHTML = '<option value="">After snapshot...</option>';
+
+  allSnapshots.forEach((name) => {
+    const beforeOpt = document.createElement('option');
+    beforeOpt.value = name;
+    beforeOpt.textContent = name;
+    deltaBeforeSelect.appendChild(beforeOpt);
+
+    const afterOpt = document.createElement('option');
+    afterOpt.value = name;
+    afterOpt.textContent = name;
+    deltaAfterSelect.appendChild(afterOpt);
+  });
+
+  if (allSnapshots.includes(beforeValue)) deltaBeforeSelect.value = beforeValue;
+  if (allSnapshots.includes(afterValue)) deltaAfterSelect.value = afterValue;
+}
+
+async function loadDeltaList() {
+  if (!deltasFeatureAvailable) {
+    allDeltas = [];
+    if (deltaList) {
+      deltaList.innerHTML = '<p class="loading">Deltas unavailable until app restart</p>';
+    }
+    return;
+  }
+
+  try {
+    allDeltas = await ipcRenderer.invoke('list-deltas');
+    await renderDeltaList();
+    if (allDeltas.length === 0) {
+      deltaList.innerHTML = '<p class="loading">No deltas yet</p>';
+    }
+  } catch (e) {
+    if (isMissingHandlerError(e, 'list-deltas')) {
+      deltasFeatureAvailable = false;
+      allDeltas = [];
+      if (deltaList) {
+        deltaList.innerHTML = '<p class="loading">Deltas unavailable until app restart</p>';
+      }
+      notifyDeltasNeedsRestart();
+      return;
+    }
+    console.error('Error loading deltas:', e);
   }
 }
 
@@ -632,7 +1036,7 @@ async function renderSnapshotList() {
   }
   
   // Update comparison dropdown
-  compareSelect.innerHTML = '<option value="">Compare with...</option>';
+  compareSelect.innerHTML = '<option value="">After snapshot...</option>';
   allSnapshots.forEach((name) => {
     if (name !== currentSnapshot) {
       const option = document.createElement('option');
@@ -645,12 +1049,86 @@ async function renderSnapshotList() {
   compareSelect.value = '';
 }
 
+async function renderDeltaList() {
+  deltaList.innerHTML = '';
+  for (const name of allDeltas) {
+    const item = document.createElement('div');
+    item.className = `snapshot-item ${name === currentDelta ? 'active' : ''}`;
+    item.textContent = name;
+    item.addEventListener('click', () => loadDelta(name));
+    deltaList.appendChild(item);
+  }
+}
+
+function switchTab(tab) {
+  if (tab === 'deltas' && !deltasFeatureAvailable) {
+    notifyDeltasNeedsRestart();
+    return;
+  }
+
+  activeTab = tab;
+  const wipeAllBtn = document.getElementById('wipeAllBtn');
+
+  if (tab === 'snapshots') {
+    snapshotsTabBtn?.classList.add('btn-primary');
+    deltasTabBtn?.classList.remove('btn-primary');
+    snapshotList.style.display = '';
+    deltaList.style.display = 'none';
+    if (deltaCompareControls) deltaCompareControls.style.display = 'none';
+    if (trendAnalyticsPanel) trendAnalyticsPanel.style.display = 'none';
+    if (wipeAllBtn) wipeAllBtn.style.display = '';
+
+    if (currentSnapshot) {
+      loadSnapshot(currentSnapshot);
+    } else {
+      emptyState.style.display = 'flex';
+      snapshotDetail.style.display = 'none';
+    }
+    return;
+  }
+
+  snapshotsTabBtn?.classList.remove('btn-primary');
+  deltasTabBtn?.classList.add('btn-primary');
+  snapshotList.style.display = 'none';
+  deltaList.style.display = '';
+  if (deltaCompareControls) deltaCompareControls.style.display = '';
+  if (trendAnalyticsPanel) trendAnalyticsPanel.style.display = '';
+  if (wipeAllBtn) wipeAllBtn.style.display = 'none';
+
+  if (currentDelta) {
+    loadDelta(currentDelta);
+  } else {
+    emptyState.style.display = 'flex';
+    emptyState.innerHTML = '<p>Select a delta to view results</p>';
+    snapshotDetail.style.display = 'none';
+  }
+
+  // If a trend was previously generated, redraw it after tab layout settles.
+  if (lastTrendPoints.length > 0) {
+    setTimeout(() => drawTrendCharts(lastTrendPoints), 0);
+  }
+}
+
+async function loadDelta(name) {
+  if (!deltasFeatureAvailable) return;
+  try {
+    const data = await ipcRenderer.invoke('load-delta', name);
+    if (!data) return;
+    currentDelta = name;
+    displayDelta(data);
+    await renderDeltaList();
+  } catch (e) {
+    console.error('Error loading delta:', e);
+  }
+}
+
 // Load and display a snapshot
 async function loadSnapshot(name) {
   try {
     const data = await ipcRenderer.invoke('load-snapshot', name);
     if (data) {
       currentSnapshot = name;
+      if (activeTab !== 'snapshots') return;
       displaySnapshot(data);
       await renderSnapshotList();
       
@@ -665,9 +1143,16 @@ async function loadSnapshot(name) {
 
 // Display snapshot data in main view
 function displaySnapshot(data) {
+  emptyState.innerHTML = '<p>Select a snapshot to view details</p>';
   emptyState.style.display = 'none';
   snapshotDetail.style.display = 'flex';
   comparisonView.style.display = 'none';
+
+  const detailContent = document.querySelector('.detail-content');
+  if (detailContent) detailContent.style.display = '';
+  compareSelect.style.display = '';
+  compareBtn.style.display = '';
+  uploadBtn.style.display = '';
 
   detailTitle.textContent = currentSnapshot;
   detailTimestamp.textContent = new Date(data.metadata.timestamp).toLocaleString();
@@ -840,6 +1325,17 @@ function filterProcesses(query) {
   });
 }
 
+function isMissingHandlerError(error, channelName) {
+  const message = error?.message || String(error || '');
+  return message.includes(`No handler registered for '${channelName}'`);
+}
+
+function notifyDeltasNeedsRestart() {
+  if (hasShownDeltasRestartNotice) return;
+  hasShownDeltasRestartNotice = true;
+  alert('Deltas requires the latest main-process handlers. Please fully restart the Electron app and try again.');
+}
+
 // Take a new snapshot
 async function takeNewSnapshot(name, tests = {}) {
   if (!ipcRenderer) {
@@ -883,6 +1379,24 @@ async function deleteSnapshot(name) {
   }
 }
 
+async function deleteDelta(name) {
+  if (!deltasFeatureAvailable) return;
+  if (confirm(`Are you sure you want to delete delta "${name}"?`)) {
+    try {
+      const success = await ipcRenderer.invoke('delete-delta', name);
+      if (success) {
+        currentDelta = null;
+        await loadDeltaList();
+        emptyState.style.display = 'flex';
+        emptyState.innerHTML = '<p>Select a delta to view results</p>';
+        snapshotDetail.style.display = 'none';
+      }
+    } catch (e) {
+      console.error('Error deleting delta:', e);
+    }
+  }
+}
+
 // Perform comparison between two snapshots
 async function performComparison(baselineName, afterName) {
   if (!ipcRenderer) {
@@ -910,15 +1424,65 @@ async function performComparison(baselineName, afterName) {
       }
     }
 
-    const comparison = await ipcRenderer.invoke('compare-snapshots', baselineName, afterName);
+    const selectedCategories = {
+      cpu: document.getElementById('compare-cpu')?.checked ?? true,
+      memory: document.getElementById('compare-memory')?.checked ?? true,
+      processes: document.getElementById('compare-processes')?.checked ?? true,
+      network: document.getElementById('compare-network')?.checked ?? true,
+      disk: document.getElementById('compare-disk')?.checked ?? true,
+      users: document.getElementById('compare-users')?.checked ?? true,
+    };
+
+    if (!Object.values(selectedCategories).some(Boolean)) {
+      alert('Please select at least one compare category in Settings.');
+      return;
+    }
+
+    const comparison = await ipcRenderer.invoke('compare-snapshots', baselineName, afterName, selectedCategories, true);
     
     if (comparison) {
-      displayComparison(comparison);
+      await loadDeltaList();
+      if (comparison.delta_name) {
+        switchTab('deltas');
+        await loadDelta(comparison.delta_name);
+      } else {
+        displayComparison(comparison);
+      }
     }
   } catch (e) {
     console.error('Error comparing snapshots:', e);
     alert('Error comparing snapshots. Check console for details.');
   }
+}
+
+function displayDelta(deltaPayload) {
+  const meta = deltaPayload?.metadata || {};
+  const delta = deltaPayload?.delta || {};
+
+  emptyState.style.display = 'none';
+  snapshotDetail.style.display = 'flex';
+  comparisonView.style.display = 'block';
+
+  detailTitle.textContent = meta.delta_name || currentDelta || 'Delta';
+  detailTimestamp.textContent = new Date(meta.created_at || Date.now()).toLocaleString();
+  integrityInfo.textContent = `Before: ${meta.before_snapshot || '-'} | After: ${meta.after_snapshot || '-'} | Direction: After - Before`;
+
+  const badgesEl = document.getElementById('testsRunBadges');
+  if (badgesEl) {
+    const categories = meta.compare_categories || {};
+    const labels = { cpu: 'CPU', memory: 'Memory', processes: 'Processes', network: 'Network', disk: 'Disk', users: 'Users' };
+    badgesEl.innerHTML = Object.entries(labels).map(([key, label]) =>
+      `<span class="test-badge ${categories[key] ? 'badge-on' : 'badge-off'}">${label}</span>`
+    ).join('');
+  }
+
+  const detailContent = document.querySelector('.detail-content');
+  if (detailContent) detailContent.style.display = 'none';
+  compareSelect.style.display = 'none';
+  compareBtn.style.display = 'none';
+  uploadBtn.style.display = 'none';
+
+  displayComparison(delta);
 }
 
 // Display comparison results
@@ -1003,4 +1567,295 @@ function displayComparison(comparison) {
   } else {
     newPortsList.innerHTML = '<p style="color: #999; font-size: 12px;">No new listening ports</p>';
   }
+
+  const overallChangesList = document.getElementById('overallChangesList');
+  if (overallChangesList) {
+    const memoryChange = comparison.memory_change_gb;
+    const cpuUsageChange = comparison.cpu_usage_change_percent;
+    const diskUsedChange = comparison.disk_used_change_gb;
+    const diskIoChange = comparison.disk_io_change_mb;
+    const diskIoRate = comparison.disk_io_avg_mb_s;
+
+    const lines = [
+      { label: 'Memory Used Delta', value: memoryChange, unit: ' GB' },
+      { label: 'CPU Usage Delta', value: cpuUsageChange, unit: ' %' },
+      { label: 'Disk Used Delta', value: diskUsedChange, unit: ' GB' },
+      { label: 'Disk IO Delta', value: diskIoChange, unit: ' MB' },
+      { label: 'Disk Speed (Avg)', value: diskIoRate, unit: ' MB/s' },
+      { label: 'Time Difference', value: comparison.time_diff_minutes, unit: ' min' },
+    ];
+
+    overallChangesList.innerHTML = lines.map((line) => {
+      if (line.value === null || line.value === undefined) {
+        return `<div class="comparison-item">${line.label}: N/A</div>`;
+      }
+      const numeric = Number(line.value);
+      const sign = Number.isFinite(numeric) && numeric > 0 ? '+' : '';
+      return `<div class="comparison-item">${line.label}: ${sign}${line.value}${line.unit}</div>`;
+    }).join('');
+  }
 }
+
+function toNum(value) {
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function extractSnapshotFactorPoint(name, snapshot) {
+  const ts = new Date(snapshot?.metadata?.timestamp || '').getTime();
+  if (!Number.isFinite(ts)) return null;
+
+  const fsInfo = Array.isArray(snapshot?.system?.filesystem_info) ? snapshot.system.filesystem_info : [];
+  const diskUsedGb = fsInfo.reduce((sum, fs) => sum + toNum(fs.used_gb), 0);
+  const readBytes = toNum(snapshot?.system?.disk_read_bytes);
+  const writeBytes = toNum(snapshot?.system?.disk_write_bytes);
+
+  return {
+    name,
+    ts,
+    label: new Date(ts).toLocaleString(),
+    memoryUsedGb: toNum(snapshot?.system?.used_memory_gb),
+    cpuUsagePercent: toNum(snapshot?.system?.cpu_usage_percent),
+    diskUsedGb,
+    diskIoTotalMb: (readBytes + writeBytes) / (1024 * 1024),
+    diskSpeedMbS: 0,
+    processCount: Array.isArray(snapshot?.running_processes) ? snapshot.running_processes.length : 0,
+    listeningPortsCount: Array.isArray(snapshot?.network?.listening_ports) ? snapshot.network.listening_ports.length : 0,
+  };
+}
+
+function formatScaleValue(value, unit = '') {
+  if (!Number.isFinite(value)) return '0';
+  if (Math.abs(value) >= 1000) return `${value.toFixed(0)}${unit}`;
+  if (Math.abs(value) >= 100) return `${value.toFixed(1)}${unit}`;
+  return `${value.toFixed(2)}${unit}`;
+}
+
+function drawSingleFactorChart(canvas, points, factor) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth || 420;
+  const height = canvas.clientHeight || 220;
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = '#111111';
+  ctx.fillRect(0, 0, width, height);
+
+  const pad = { top: 26, right: 16, bottom: 38, left: 62 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+
+  const values = points.map(p => toNum(p[factor.key]));
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = Math.max(max - min, 0.0001);
+
+  const minTs = points[0].ts;
+  const maxTs = points[points.length - 1].ts;
+  const tsSpan = Math.max(maxTs - minTs, 1);
+
+  function xFor(ts) {
+    return pad.left + ((ts - minTs) / tsSpan) * plotW;
+  }
+
+  function yFor(value) {
+    const ratio = (value - min) / range;
+    return pad.top + (1 - ratio) * plotH;
+  }
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (plotH * i / 4);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(width - pad.right, y);
+    ctx.stroke();
+  }
+
+  // Y-axis scale labels
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '10px Space Mono';
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (plotH * i / 4);
+    const value = max - (range * i / 4);
+    const label = formatScaleValue(value, factor.unit || '');
+    const w = ctx.measureText(label).width;
+    ctx.fillText(label, pad.left - 8 - w, y + 3);
+  }
+
+  // Axis line
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top);
+  ctx.lineTo(pad.left, height - pad.bottom);
+  ctx.stroke();
+
+  // Trend line
+  ctx.strokeStyle = factor.color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  points.forEach((p, idx) => {
+    const x = xFor(p.ts);
+    const y = yFor(toNum(p[factor.key]));
+    if (idx === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Points
+  ctx.fillStyle = factor.color;
+  points.forEach((p) => {
+    const x = xFor(p.ts);
+    const y = yFor(toNum(p[factor.key]));
+    ctx.beginPath();
+    ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = '#e5e7eb';
+  ctx.font = '12px Poppins';
+  ctx.fillText(factor.label, pad.left, 16);
+
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '10px Space Mono';
+  const start = new Date(minTs).toLocaleString();
+  const end = new Date(maxTs).toLocaleString();
+  ctx.fillText(start, pad.left, height - 14);
+  const endW = ctx.measureText(end).width;
+  ctx.fillText(end, width - pad.right - endW, height - 14);
+}
+
+function drawTrendCharts(points) {
+  const container = document.getElementById('trendChartsContainer');
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  if (!points || points.length < 2) {
+    const msg = document.createElement('div');
+    msg.className = 'comparison-item';
+    msg.textContent = 'Need at least 2 snapshots in range to draw trend graphs.';
+    container.appendChild(msg);
+    return;
+  }
+
+  const factors = [
+    { key: 'memoryUsedGb', label: 'Memory Used', color: '#7dd3fc', unit: ' GB' },
+    { key: 'diskUsedGb', label: 'Disk Used', color: '#fde047', unit: ' GB' },
+    { key: 'cpuUsagePercent', label: 'CPU Usage', color: '#a7f3d0', unit: ' %' },
+    { key: 'diskSpeedMbS', label: 'Disk Speed', color: '#fca5a5', unit: ' MB/s' },
+    { key: 'processCount', label: 'Process Count', color: '#c4b5fd', unit: '' },
+    { key: 'listeningPortsCount', label: 'Listening Ports', color: '#fdba74', unit: '' },
+  ];
+
+  factors.forEach((factor) => {
+    const wrapper = document.createElement('div');
+    wrapper.style.background = '#0f0f0f';
+    wrapper.style.border = '1px solid rgba(255,255,255,0.12)';
+    wrapper.style.borderRadius = '8px';
+    wrapper.style.padding = '8px';
+
+    const canvas = document.createElement('canvas');
+    canvas.style.width = '100%';
+    canvas.style.height = '220px';
+    wrapper.appendChild(canvas);
+    container.appendChild(wrapper);
+    drawSingleFactorChart(canvas, points, factor);
+  });
+}
+
+function renderTrendOverallChanges(points) {
+  const summaryEl = document.getElementById('trendOverallChanges');
+  const summaryTextEl = document.getElementById('trendSummaryText');
+  if (!summaryEl || !summaryTextEl) return;
+  if (!points.length) {
+    summaryTextEl.textContent = 'No snapshots found in the chosen date range.';
+    summaryEl.innerHTML = '<div class="comparison-item">No data to summarize.</div>';
+    return;
+  }
+
+  const first = points[0];
+  const last = points[points.length - 1];
+  const elapsedSec = Math.max((last.ts - first.ts) / 1000, 0);
+  const diskIoDeltaMb = last.diskIoTotalMb - first.diskIoTotalMb;
+  const diskIoAvgMbS = elapsedSec > 0 ? diskIoDeltaMb / elapsedSec : 0;
+  const maxDiskSpeed = Math.max(...points.map(p => toNum(p.diskSpeedMbS)));
+
+  summaryTextEl.textContent = `${points.length} snapshots from ${new Date(first.ts).toLocaleString()} to ${new Date(last.ts).toLocaleString()}`;
+  const lines = [
+    { label: 'Memory Used Change', value: (last.memoryUsedGb - first.memoryUsedGb).toFixed(2), unit: ' GB' },
+    { label: 'Disk Used Change', value: (last.diskUsedGb - first.diskUsedGb).toFixed(2), unit: ' GB' },
+    { label: 'CPU Usage Change', value: (last.cpuUsagePercent - first.cpuUsagePercent).toFixed(2), unit: ' %' },
+    { label: 'Disk IO Change', value: diskIoDeltaMb.toFixed(2), unit: ' MB' },
+    { label: 'Disk Speed (Avg)', value: diskIoAvgMbS.toFixed(2), unit: ' MB/s' },
+    { label: 'Disk Speed (Peak)', value: maxDiskSpeed.toFixed(2), unit: ' MB/s' },
+    { label: 'Process Count Change', value: (last.processCount - first.processCount), unit: '' },
+    { label: 'Listening Ports Change', value: (last.listeningPortsCount - first.listeningPortsCount), unit: '' },
+  ];
+
+  summaryEl.innerHTML = lines.map((line) => {
+    const n = Number(line.value);
+    const sign = Number.isFinite(n) && n > 0 ? '+' : '';
+    return `<div class="comparison-item">${line.label}: ${sign}${line.value}${line.unit}</div>`;
+  }).join('');
+}
+
+async function generateTrendAnalytics(startTs, endTs) {
+  // Always refresh names first so newly created snapshots are included.
+  const latestSnapshotNames = await ipcRenderer.invoke('list-snapshots');
+  allSnapshots = Array.isArray(latestSnapshotNames) ? latestSnapshotNames : [];
+  refreshDeltaCompareSelects();
+
+  const points = [];
+  for (const name of allSnapshots) {
+    try {
+      const data = await ipcRenderer.invoke('load-snapshot', name);
+      const p = extractSnapshotFactorPoint(name, data);
+      if (!p) continue;
+      if (p.ts < startTs || p.ts > endTs) continue;
+      if (p) points.push(p);
+    } catch {
+      // Skip unreadable snapshots.
+    }
+  }
+
+  points.sort((a, b) => a.ts - b.ts);
+  for (let i = 0; i < points.length; i++) {
+    if (i === 0) {
+      points[i].diskSpeedMbS = 0;
+      continue;
+    }
+    const prev = points[i - 1];
+    const curr = points[i];
+    const elapsedSec = Math.max((curr.ts - prev.ts) / 1000, 0);
+    if (elapsedSec <= 0) {
+      curr.diskSpeedMbS = 0;
+      continue;
+    }
+    const deltaMb = curr.diskIoTotalMb - prev.diskIoTotalMb;
+    curr.diskSpeedMbS = deltaMb / elapsedSec;
+  }
+
+  lastTrendPoints = points;
+
+  // Force the trend panel to the foreground in deltas workflow.
+  emptyState.style.display = 'none';
+  snapshotDetail.style.display = 'none';
+  if (trendAnalyticsPanel) trendAnalyticsPanel.style.display = '';
+  renderTrendOverallChanges(points);
+
+  // Draw after layout pass so canvas dimensions are correct on first render.
+  requestAnimationFrame(() => drawTrendCharts(points));
+}
+
+window.addEventListener('resize', () => {
+  if (activeTab === 'deltas' && lastTrendPoints.length > 1) {
+    drawTrendCharts(lastTrendPoints);
+  }
+});

@@ -2,6 +2,7 @@ const si = require('systeminformation');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { execFile } = require('child_process');
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const https = require('https');
 const http = require('http');
@@ -46,6 +47,298 @@ function makeRequest(url, options, body) {
   });
 }
 
+function runPowerShell(command, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    execFile('powershell.exe', ['-NoProfile', '-Command', command], { timeout: timeoutMs }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error((stderr || error.message || '').toString().trim() || 'PowerShell command failed'));
+        return;
+      }
+      resolve((stdout || '').toString().trim());
+    });
+  });
+}
+
+function hashFile(filePath, algorithm = 'sha256') {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash(algorithm);
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', reject);
+    stream.on('data', chunk => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+function normalizeInputPath(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  const cleaned = raw.trim().replace(/^"|"$/g, '');
+  const expanded = cleaned.replace(/%([^%]+)%/g, (_, name) => process.env[name] || `%${name}%`);
+  return path.normalize(expanded);
+}
+
+function stripExtension(fileName) {
+  if (!fileName || typeof fileName !== 'string') return '';
+  const trimmed = fileName.trim().toLowerCase();
+  const ext = path.extname(trimmed);
+  if (!ext) return trimmed;
+  return trimmed.slice(0, -ext.length);
+}
+
+function fileNamesMatchWithOrWithoutExtension(candidateName, requestedName) {
+  if (!candidateName || !requestedName) return false;
+  const c = candidateName.trim().toLowerCase();
+  const r = requestedName.trim().toLowerCase();
+  if (c === r) return true;
+  return stripExtension(c) === stripExtension(r);
+}
+
+function findNearestExistingAncestor(inputPath) {
+  if (!inputPath) return null;
+  let current = inputPath;
+  for (let i = 0; i < 25; i++) {
+    if (fs.existsSync(current)) return current;
+    const parent = path.dirname(current);
+    if (!parent || parent === current) break;
+    current = parent;
+  }
+  return null;
+}
+
+function findFileRecursive(startDir, targetFileName, maxEntries = 15000) {
+  if (!fs.existsSync(startDir)) return null;
+  let visited = 0;
+  const stack = [startDir];
+
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      visited += 1;
+      if (visited > maxEntries) return null;
+
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isFile() && fileNamesMatchWithOrWithoutExtension(entry.name, targetFileName)) {
+        return fullPath;
+      }
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+      }
+    }
+  }
+
+  return null;
+}
+
+async function checkFileSearchCriteria(criteria = {}) {
+  const filePathInput = normalizeInputPath(criteria.filePath || '');
+  const fileNameInput = (criteria.fileName || '').trim();
+  const registryKeyInput = (criteria.registryKey || '').trim();
+  const expectedVersion = (criteria.version || '').trim();
+
+  let resolvedFilePath = '';
+  let fileFound = false;
+  let fileExistsAtProvidedPath = false;
+  let fileSearchMode = 'none';
+  const searchedLocations = [];
+
+  if (filePathInput) {
+    fileSearchMode = 'path';
+    searchedLocations.push(filePathInput);
+    try {
+      const stat = fs.existsSync(filePathInput) ? fs.statSync(filePathInput) : null;
+      if (stat?.isFile()) {
+        resolvedFilePath = filePathInput;
+        fileExistsAtProvidedPath = true;
+        fileFound = true;
+      } else if (stat?.isDirectory()) {
+        if (fileNameInput) {
+          fileSearchMode = 'path+name';
+          const directPath = path.join(filePathInput, fileNameInput);
+          searchedLocations.push(directPath);
+          if (fs.existsSync(directPath) && fs.statSync(directPath).isFile()) {
+            resolvedFilePath = directPath;
+            fileFound = true;
+          } else {
+            const recursiveMatch = findFileRecursive(filePathInput, fileNameInput);
+            if (recursiveMatch) {
+              resolvedFilePath = recursiveMatch;
+              fileFound = true;
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore stat errors and continue with fallback checks.
+    }
+  }
+
+  if (!fileFound && fileNameInput) {
+    fileSearchMode = filePathInput ? fileSearchMode : 'name-only';
+    if (filePathInput) {
+      const combined = path.join(filePathInput, fileNameInput);
+      searchedLocations.push(combined);
+      if (fs.existsSync(combined) && fs.statSync(combined).isFile()) {
+        resolvedFilePath = combined;
+        fileFound = true;
+      }
+    }
+
+    // If the provided path does not exist, attempt search from nearest existing ancestor.
+    if (!fileFound && filePathInput && !fs.existsSync(filePathInput)) {
+      const ancestor = findNearestExistingAncestor(filePathInput);
+      if (ancestor && fs.existsSync(ancestor) && fs.statSync(ancestor).isDirectory()) {
+        fileSearchMode = `${fileSearchMode}+ancestor-recursive`;
+        searchedLocations.push(ancestor);
+        const ancestorMatch = findFileRecursive(ancestor, fileNameInput);
+        if (ancestorMatch) {
+          resolvedFilePath = ancestorMatch;
+          fileFound = true;
+        }
+      }
+    }
+
+    // Final fallback: search common Windows installation roots.
+    if (!fileFound) {
+      const roots = [
+        process.env['ProgramFiles'],
+        process.env['ProgramFiles(x86)'],
+        process.env['SystemRoot'],
+      ].filter(Boolean).map(normalizeInputPath);
+
+      for (const root of roots) {
+        if (!root || !fs.existsSync(root)) continue;
+        fileSearchMode = `${fileSearchMode}+common-roots`;
+        searchedLocations.push(root);
+        const rootMatch = findFileRecursive(root, fileNameInput, 25000);
+        if (rootMatch) {
+          resolvedFilePath = rootMatch;
+          fileFound = true;
+          break;
+        }
+      }
+    }
+  }
+
+  let actualVersion = null;
+  let versionMatches = null;
+  let versionError = null;
+
+  if (expectedVersion) {
+    if (process.platform !== 'win32') {
+      versionError = 'Version lookup is supported on Windows only.';
+      versionMatches = false;
+    } else if (!fileFound || !resolvedFilePath) {
+      versionError = 'Cannot validate version because no matching file was found.';
+      versionMatches = false;
+    } else {
+      try {
+        const escapedPath = resolvedFilePath.replace(/'/g, "''");
+        actualVersion = await runPowerShell(`(Get-Item -LiteralPath '${escapedPath}').VersionInfo.FileVersion`);
+        versionMatches = (actualVersion || '').trim() === expectedVersion;
+      } catch (e) {
+        versionError = e.message;
+        versionMatches = false;
+      }
+    }
+  }
+
+  let registryExists = null;
+  let registryError = null;
+  if (registryKeyInput) {
+    if (process.platform !== 'win32') {
+      registryExists = false;
+      registryError = 'Registry checks are supported on Windows only.';
+    } else {
+      try {
+        await runPowerShell(`reg query \"${registryKeyInput.replace(/\"/g, '\\"')}\"`);
+        registryExists = true;
+      } catch (e) {
+        registryExists = false;
+        registryError = e.message;
+      }
+    }
+  }
+
+  const fileNameMatches = fileNameInput
+    ? (fileFound && fileNamesMatchWithOrWithoutExtension(path.basename(resolvedFilePath), fileNameInput))
+    : null;
+
+  let fileMetadata = null;
+  let metadataError = null;
+  if (fileFound && resolvedFilePath) {
+    try {
+      const stat = fs.statSync(resolvedFilePath);
+      const ext = path.extname(resolvedFilePath) || null;
+      const sha256 = await hashFile(resolvedFilePath, 'sha256');
+      const md5 = await hashFile(resolvedFilePath, 'md5');
+
+      let versionInfo = null;
+      if (process.platform === 'win32') {
+        try {
+          const escapedPath = resolvedFilePath.replace(/'/g, "''");
+          const rawVersionJson = await runPowerShell(`$vi=(Get-Item -LiteralPath '${escapedPath}').VersionInfo; [PSCustomObject]@{ FileVersion=$vi.FileVersion; ProductVersion=$vi.ProductVersion; ProductName=$vi.ProductName; CompanyName=$vi.CompanyName; OriginalFilename=$vi.OriginalFilename } | ConvertTo-Json -Compress`);
+          versionInfo = rawVersionJson ? JSON.parse(rawVersionJson) : null;
+        } catch {
+          versionInfo = null;
+        }
+      }
+
+      fileMetadata = {
+        base_name: path.basename(resolvedFilePath),
+        extension: ext,
+        directory: path.dirname(resolvedFilePath),
+        size_bytes: stat.size,
+        size_kb: Number((stat.size / 1024).toFixed(2)),
+        size_mb: Number((stat.size / 1024 / 1024).toFixed(2)),
+        created_at: stat.birthtime ? stat.birthtime.toISOString() : null,
+        modified_at: stat.mtime ? stat.mtime.toISOString() : null,
+        accessed_at: stat.atime ? stat.atime.toISOString() : null,
+        sha256,
+        md5,
+        windows_version_info: versionInfo,
+      };
+    } catch (e) {
+      metadataError = e.message;
+    }
+  }
+
+  return {
+    input: {
+      filePath: filePathInput || null,
+      fileName: fileNameInput || null,
+      registryKey: registryKeyInput || null,
+      version: expectedVersion || null,
+    },
+    file: {
+      search_mode: fileSearchMode,
+      found: fileFound,
+      exists_at_provided_path: fileExistsAtProvidedPath,
+      resolved_path: resolvedFilePath || null,
+      file_name_matches: fileNameMatches,
+      searched_locations: searchedLocations,
+      metadata: fileMetadata,
+      metadata_error: metadataError,
+    },
+    version: {
+      expected: expectedVersion || null,
+      actual: actualVersion,
+      matches: versionMatches,
+      error: versionError,
+    },
+    registry: {
+      key: registryKeyInput || null,
+      matches: registryExists,
+      error: registryError,
+    },
+  };
+}
+
 // 1. The Snapshot Function
 async function takeSnapshot(filename, tests = {}) {
   // Default every category to true so existing callers still work
@@ -66,6 +359,8 @@ async function takeSnapshot(filename, tests = {}) {
     // Grab only the requested data categories
     console.log('Fetching CPU info...');
     const cpu = run.cpu ? await si.cpu() : {};
+    console.log('Fetching CPU load...');
+    const currentLoad = run.cpu ? await si.currentLoad() : {};
     console.log('Fetching memory info...');
     const mem = run.memory ? await si.mem() : {};
     
@@ -83,6 +378,9 @@ async function takeSnapshot(filename, tests = {}) {
     const diskLayout = run.disk ? await si.diskLayout() : [];
     console.log('Fetching file system size...');
     const fsSize = run.disk ? await si.fsSize() : [];
+    console.log('Fetching disk IO counters...');
+    const disksIO = run.disk ? await si.disksIO() : {};
+    const safeDisksIO = disksIO && typeof disksIO === 'object' ? disksIO : {};
     console.log('Fetching OS info...');
     const osInfo = run.cpu ? await si.osInfo() : {};
     console.log('Fetching users...');
@@ -104,6 +402,7 @@ async function takeSnapshot(filename, tests = {}) {
         cpu_brand: cpu.brand,
         cpu_cores: cpu.cores,
         cpu_speed_ghz: cpu.speed,
+        cpu_usage_percent: currentLoad.currentLoad ? Number(currentLoad.currentLoad.toFixed(2)) : null,
         
         // Memory Info
         total_memory_gb: (mem.total / 1024 / 1024 / 1024).toFixed(2),
@@ -126,7 +425,10 @@ async function takeSnapshot(filename, tests = {}) {
           used_gb: (fs.used / 1024 / 1024 / 1024).toFixed(2),
           available_gb: (fs.available / 1024 / 1024 / 1024).toFixed(2),
           use_percent: fs.use.toFixed(2)
-        }))
+        })),
+        disk_read_bytes: safeDisksIO.rBytes ?? 0,
+        disk_write_bytes: safeDisksIO.wBytes ?? 0,
+        disk_io_time_ms: safeDisksIO.tIO ?? 0
       },
       network: {
         interfaces: networkInterfaces.map(iface => ({
@@ -270,59 +572,86 @@ ipcMain.handle('delete-snapshot', async (event, filename) => {
   }
 });
 
-ipcMain.handle('compare-snapshots', async (event, baselineName, afterName) => {
+ipcMain.handle('file-search-check', async (event, criteria) => {
   try {
-    const baselinePath = path.join(getSnapshotDir(), `${baselineName}.json`);
+    return await checkFileSearchCriteria(criteria || {});
+  } catch (e) {
+    console.error('Error in file-search-check:', e);
+    return {
+      error: e.message || 'File search failed.'
+    };
+  }
+});
+
+ipcMain.handle('compare-snapshots', async (event, beforeName, afterName, selectedCategories = null, saveDelta = true) => {
+  try {
+    const baselinePath = path.join(getSnapshotDir(), `${beforeName}.json`);
     const afterPath = path.join(getSnapshotDir(), `${afterName}.json`);
-    
+
     const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf-8'));
     const after = JSON.parse(fs.readFileSync(afterPath, 'utf-8'));
-    
-    const baselineProcessNames = new Set(baseline.running_processes.map(p => p.name));
-    const afterProcessNames = new Set(after.running_processes.map(p => p.name));
-    
-    const newProcesses = after.running_processes.filter(
-      p => !baselineProcessNames.has(p.name)
-    );
-    
-    const removedProcesses = baseline.running_processes.filter(
-      p => !afterProcessNames.has(p.name)
-    );
-    
-    // Find processes with significant CPU/Memory changes
-    const processChanges = after.running_processes
-      .map(afterProc => {
-        const baselineProc = baseline.running_processes.find(p => p.name === afterProc.name);
-        if (baselineProc) {
-          return {
-            name: afterProc.name,
-            cpu_change: afterProc.cpu_usage - baselineProc.cpu_usage,
-            mem_change: afterProc.mem_usage - baselineProc.mem_usage,
-            cpu_before: baselineProc.cpu_usage,
-            cpu_after: afterProc.cpu_usage,
-            mem_before: baselineProc.mem_usage,
-            mem_after: afterProc.mem_usage
-          };
-        }
-        return null;
-      })
-      .filter(p => p && (Math.abs(p.cpu_change) > 0.5 || Math.abs(p.mem_change) > 0.5));
-    
+
+    const categories = selectedCategories ? { ...compareDefaults, ...selectedCategories } : compareDefaults;
+    const deltaData = buildDelta(baseline, after, beforeName, afterName, categories);
+
+    let savedDeltaName = null;
+    if (saveDelta) {
+      ensureDir(getDeltaDir());
+      savedDeltaName = `delta_${beforeName}_to_${afterName}_${formatDeltaTimestamp()}`;
+      const payload = {
+        metadata: {
+          delta_name: savedDeltaName,
+          created_at: new Date().toISOString(),
+          before_snapshot: beforeName,
+          after_snapshot: afterName,
+          compare_categories: categories,
+          delta_version: '1.0'
+        },
+        delta: deltaData
+      };
+      fs.writeFileSync(path.join(getDeltaDir(), `${savedDeltaName}.json`), JSON.stringify(payload, null, 2));
+    }
+
     return {
-      baseline_timestamp: baseline.metadata.timestamp,
-      after_timestamp: after.metadata.timestamp,
-      time_diff_minutes: Math.round((new Date(after.metadata.timestamp) - new Date(baseline.metadata.timestamp)) / 60000),
-      new_processes: newProcesses,
-      removed_processes: removedProcesses,
-      process_changes: processChanges,
-      memory_change_gb: (parseFloat(after.system.used_memory_gb) - parseFloat(baseline.system.used_memory_gb)).toFixed(2),
-      new_listening_ports: after.network.listening_ports.filter(
-        p => !baseline.network.listening_ports.some(bp => bp.local_port === p.local_port)
-      )
+      ...deltaData,
+      delta_name: savedDeltaName
     };
   } catch (e) {
     console.error("Error comparing snapshots:", e);
     return null;
+  }
+});
+
+ipcMain.handle('list-deltas', async () => {
+  try {
+    ensureDir(getDeltaDir());
+    const files = fs.readdirSync(getDeltaDir()).filter(f => f.endsWith('.json'));
+    return files.map(f => f.replace('.json', ''));
+  } catch (e) {
+    console.error('Error listing deltas:', e);
+    return [];
+  }
+});
+
+ipcMain.handle('load-delta', async (event, deltaName) => {
+  try {
+    const p = path.join(getDeltaDir(), `${deltaName}.json`);
+    const data = fs.readFileSync(p, 'utf-8');
+    return JSON.parse(data);
+  } catch (e) {
+    console.error('Error loading delta:', e);
+    return null;
+  }
+});
+
+ipcMain.handle('delete-delta', async (event, deltaName) => {
+  try {
+    const p = path.join(getDeltaDir(), `${deltaName}.json`);
+    fs.unlinkSync(p);
+    return true;
+  } catch (e) {
+    console.error('Error deleting delta:', e);
+    return false;
   }
 });
 
@@ -425,10 +754,143 @@ let autoSnapshotEnabled = false;
 let maxSnapshots = 0; // 0 = unlimited
 let testDefaults = { cpu: true, memory: true, processes: true, network: true, disk: true, users: true };
 let customSnapshotDir = null; // null = use default userData path
+let compareDefaults = { cpu: true, memory: true, processes: true, network: true, disk: true, users: true };
 
 // Returns the active snapshot data directory
 function getSnapshotDir() {
   return customSnapshotDir || app.getPath('userData');
+}
+
+function getDeltaDir() {
+  return path.join(getSnapshotDir(), 'deltas');
+}
+
+function ensureDir(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
+
+function toNumber(value) {
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function toFiniteOrNull(value) {
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function getFilesystemUsedTotalGb(snapshot) {
+  const fsInfo = snapshot?.system?.filesystem_info;
+  if (!Array.isArray(fsInfo)) return 0;
+  return fsInfo.reduce((sum, item) => sum + toNumber(item.used_gb), 0);
+}
+
+function getDiskIoTotalBytes(snapshot) {
+  const readBytes = toNumber(snapshot?.system?.disk_read_bytes);
+  const writeBytes = toNumber(snapshot?.system?.disk_write_bytes);
+  return readBytes + writeBytes;
+}
+
+function buildDelta(before, after, beforeName, afterName, compareSettings = compareDefaults) {
+  const beforeProcesses = Array.isArray(before?.running_processes) ? before.running_processes : [];
+  const afterProcesses = Array.isArray(after?.running_processes) ? after.running_processes : [];
+  const beforePorts = Array.isArray(before?.network?.listening_ports) ? before.network.listening_ports : [];
+  const afterPorts = Array.isArray(after?.network?.listening_ports) ? after.network.listening_ports : [];
+  const beforeUsers = Array.isArray(before?.users) ? before.users : [];
+  const afterUsers = Array.isArray(after?.users) ? after.users : [];
+
+  const beforeProcessNames = new Set(beforeProcesses.map(p => p.name));
+  const afterProcessNames = new Set(afterProcesses.map(p => p.name));
+
+  const processChanges = afterProcesses
+    .map(afterProc => {
+      const beforeProc = beforeProcesses.find(p => p.name === afterProc.name);
+      if (!beforeProc) return null;
+      return {
+        name: afterProc.name,
+        cpu_change: (afterProc.cpu_usage || 0) - (beforeProc.cpu_usage || 0),
+        mem_change: (afterProc.mem_usage || 0) - (beforeProc.mem_usage || 0),
+        cpu_before: beforeProc.cpu_usage || 0,
+        cpu_after: afterProc.cpu_usage || 0,
+        mem_before: beforeProc.mem_usage || 0,
+        mem_after: afterProc.mem_usage || 0
+      };
+    })
+    .filter(p => p && (Math.abs(p.cpu_change) > 0.5 || Math.abs(p.mem_change) > 0.5));
+
+  const beforePortKeys = new Set(beforePorts.map(p => `${p.protocol}:${p.local_address}:${p.local_port}`));
+  const afterPortKeys = new Set(afterPorts.map(p => `${p.protocol}:${p.local_address}:${p.local_port}`));
+
+  const beforeUserKeys = new Set(beforeUsers.map(u => `${u.user}:${u.tty || ''}`));
+  const afterUserKeys = new Set(afterUsers.map(u => `${u.user}:${u.tty || ''}`));
+
+  const beforeTime = new Date(before?.metadata?.timestamp || 0).getTime();
+  const afterTime = new Date(after?.metadata?.timestamp || 0).getTime();
+  const elapsedSeconds = Number.isFinite(beforeTime) && Number.isFinite(afterTime)
+    ? Math.max((afterTime - beforeTime) / 1000, 0)
+    : 0;
+  const diskIoDeltaBytes = getDiskIoTotalBytes(after) - getDiskIoTotalBytes(before);
+  const beforeCpuUsage = toFiniteOrNull(before?.system?.cpu_usage_percent);
+  const afterCpuUsage = toFiniteOrNull(after?.system?.cpu_usage_percent);
+
+  const result = {
+    before_snapshot: beforeName,
+    after_snapshot: afterName,
+    before_timestamp: before?.metadata?.timestamp || null,
+    after_timestamp: after?.metadata?.timestamp || null,
+    time_diff_minutes: Number.isFinite(beforeTime) && Number.isFinite(afterTime)
+      ? Math.round((afterTime - beforeTime) / 60000)
+      : null,
+    categories_compared: compareSettings,
+    new_processes: compareSettings.processes
+      ? afterProcesses.filter(p => !beforeProcessNames.has(p.name))
+      : [],
+    removed_processes: compareSettings.processes
+      ? beforeProcesses.filter(p => !afterProcessNames.has(p.name))
+      : [],
+    process_changes: compareSettings.processes ? processChanges : [],
+    memory_change_gb: compareSettings.memory
+      ? (toNumber(after?.system?.used_memory_gb) - toNumber(before?.system?.used_memory_gb)).toFixed(2)
+      : null,
+    new_listening_ports: compareSettings.network
+      ? afterPorts.filter(p => !beforePortKeys.has(`${p.protocol}:${p.local_address}:${p.local_port}`))
+      : [],
+    closed_listening_ports: compareSettings.network
+      ? beforePorts.filter(p => !afterPortKeys.has(`${p.protocol}:${p.local_address}:${p.local_port}`))
+      : [],
+    cpu_usage_change_percent: compareSettings.cpu && beforeCpuUsage !== null && afterCpuUsage !== null
+      ? (afterCpuUsage - beforeCpuUsage).toFixed(2)
+      : null,
+    disk_used_change_gb: compareSettings.disk
+      ? (getFilesystemUsedTotalGb(after) - getFilesystemUsedTotalGb(before)).toFixed(2)
+      : null,
+    disk_io_change_mb: compareSettings.disk
+      ? (diskIoDeltaBytes / (1024 * 1024)).toFixed(2)
+      : null,
+    disk_io_avg_mb_s: compareSettings.disk
+      ? (elapsedSeconds > 0 ? (diskIoDeltaBytes / (1024 * 1024)) / elapsedSeconds : 0).toFixed(2)
+      : null,
+    new_users: compareSettings.users
+      ? afterUsers.filter(u => !beforeUserKeys.has(`${u.user}:${u.tty || ''}`))
+      : [],
+    removed_users: compareSettings.users
+      ? beforeUsers.filter(u => !afterUserKeys.has(`${u.user}:${u.tty || ''}`))
+      : []
+  };
+
+  return result;
+}
+
+function formatDeltaTimestamp() {
+  const now = new Date();
+  return now.getFullYear() + '-' +
+    String(now.getMonth() + 1).padStart(2, '0') + '-' +
+    String(now.getDate()).padStart(2, '0') + '_' +
+    String(now.getHours()).padStart(2, '0') + '-' +
+    String(now.getMinutes()).padStart(2, '0') + '-' +
+    String(now.getSeconds()).padStart(2, '0');
 }
 
 // --- Settings persistence ---
@@ -446,6 +908,7 @@ function loadSettings() {
       autoSnapshotEnabled = s.autoSnapshotEnabled ?? false;
       customSnapshotDir = s.customSnapshotDir ?? null;
       if (s.testDefaults) testDefaults = { ...testDefaults, ...s.testDefaults };
+      if (s.compareDefaults) compareDefaults = { ...compareDefaults, ...s.compareDefaults };
     }
   } catch (e) { console.error('Failed to load settings:', e); }
 }
@@ -457,6 +920,7 @@ function saveSettings() {
       autoSnapshotEnabled,
       autoSnapshotMinutes,
       testDefaults,
+      compareDefaults,
       customSnapshotDir
     }));
   } catch (e) { console.error('Failed to save settings:', e); }
@@ -598,6 +1062,14 @@ ipcMain.handle('set-test-defaults', (event, tests) => {
   return true;
 });
 
+ipcMain.handle('get-compare-defaults', () => compareDefaults);
+
+ipcMain.handle('set-compare-defaults', (event, categories) => {
+  compareDefaults = { ...compareDefaults, ...categories };
+  saveSettings();
+  return true;
+});
+
 // --- Data folder management ---
 ipcMain.handle('get-data-folder', () => getSnapshotDir());
 
@@ -632,6 +1104,20 @@ ipcMain.handle('move-data-folder', async () => {
       const dest = path.join(newDir, file);
       fs.copyFileSync(src, dest);
       fs.unlinkSync(src);
+    }
+
+    // Move saved deltas folder separately.
+    const oldDeltaDir = path.join(oldDir, 'deltas');
+    const newDeltaDir = path.join(newDir, 'deltas');
+    if (fs.existsSync(oldDeltaDir)) {
+      ensureDir(newDeltaDir);
+      const deltaFiles = fs.readdirSync(oldDeltaDir).filter(f => f.endsWith('.json'));
+      for (const file of deltaFiles) {
+        const src = path.join(oldDeltaDir, file);
+        const dest = path.join(newDeltaDir, file);
+        fs.copyFileSync(src, dest);
+        fs.unlinkSync(src);
+      }
     }
 
     customSnapshotDir = newDir;
