@@ -8,8 +8,8 @@ interface SnapshotItem {
   timestamp: string;
   status: SnapshotStatus;
   size_bytes: number;
-  process_count: number;
-  port_count: number;
+  process_count?: number | null;
+  port_count?: number | null;
   memory_used_gb?: number | null;
 }
 
@@ -105,9 +105,9 @@ export function TimelineView({
                   <StatusBadge status={snapshot.status} />
                 </div>
 
-                <div className="flex gap-4 text-xs text-gray-500">
-                  <span>{snapshot.process_count} processes</span>
-                  <span>{snapshot.port_count} ports</span>
+                <div className="flex gap-4 text-xs text-gray-500 flex-wrap">
+                  {snapshot.process_count != null && <span>{snapshot.process_count} processes</span>}
+                  {snapshot.port_count != null && <span>{snapshot.port_count} ports</span>}
                   <span>{formatBytes(snapshot.size_bytes)}</span>
                   {snapshot.memory_used_gb != null && (
                     <span>{snapshot.memory_used_gb} GB RAM</span>

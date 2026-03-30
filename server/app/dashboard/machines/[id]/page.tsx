@@ -16,8 +16,8 @@ interface SnapshotItem {
   timestamp: string;
   status: SnapshotStatus;
   size_bytes: number;
-  process_count: number;
-  port_count: number;
+  process_count?: number | null;
+  port_count?: number | null;
   memory_used_gb?: number | null;
 }
 
@@ -28,7 +28,11 @@ interface MachineDetail {
   snapshot_count: number;
   latest_timestamp: string;
   snapshots: SnapshotItem[];
-  latest_data: any;
+  latest_system: any;
+  latest_processes: any[];
+  latest_process_count: number;
+  latest_listening_ports: any[];
+  latest_port_count: number;
 }
 
 interface ComparisonResult {
@@ -63,6 +67,7 @@ export default function MachineDetailPage({
   const [machine, setMachine] = useState<MachineDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [comparison, setComparison] = useState<ComparisonResult | null>(null);
@@ -70,31 +75,27 @@ export default function MachineDetailPage({
 
   const apiKey = process.env.NEXT_PUBLIC_API_KEY || DEFAULT_API_KEY;
 
+  const loadMachine = async () => {
+    try {
+      setRefreshing(true);
+      const res = await fetch(`/api/machines/${encodeURIComponent(machineId)}`, {
+        headers: { 'x-api-key': apiKey }
+      });
+
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+
+      const data = await res.json();
+      setMachine(data);
+      setError('');
+    } catch (e: any) {
+      setError(`Failed to load machine: ${e.message}`);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
   useEffect(() => {
-    let isMounted = true;
-
-    const loadMachine = async () => {
-      try {
-        const res = await fetch(`/api/machines/${encodeURIComponent(machineId)}`, {
-          headers: { 'x-api-key': apiKey }
-        });
-
-        if (!res.ok) throw new Error(`Server returned ${res.status}`);
-
-        const data = await res.json();
-        if (isMounted) {
-          setMachine(data);
-          setError('');
-          setLoading(false);
-        }
-      } catch (e: any) {
-        if (isMounted) {
-          setError(`Failed to load machine: ${e.message}`);
-          setLoading(false);
-        }
-      }
-    };
-
     loadMachine();
   }, [machineId, apiKey]);
 
@@ -202,6 +203,13 @@ export default function MachineDetailPage({
                 <p className="text-sm text-white/70">{machine.machine_type} · {machine.snapshot_count} snapshots</p>
               </div>
             </div>
+            <button
+              onClick={loadMachine}
+              disabled={refreshing}
+              className="ml-auto rounded-lg bg-white/15 px-3 py-2 text-sm text-white hover:bg-white/25 disabled:opacity-60"
+            >
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
           </div>
         </div>
       </header>
@@ -258,31 +266,31 @@ export default function MachineDetailPage({
             )}
 
             {/* System Info */}
-            {machine.latest_data?.system && (
+            {machine.latest_system && (
               <div>
                 <h3 className="text-lg font-semibold text-gray-700 mb-3">
                   💻 Latest System Information
                 </h3>
-                <SystemInfoCard system={machine.latest_data.system} />
+                <SystemInfoCard system={machine.latest_system} />
               </div>
             )}
 
             {/* Network Ports */}
-            {machine.latest_data?.network?.listening_ports && (
+            {machine.latest_listening_ports.length > 0 && (
               <div>
                 <h3 className="text-lg font-semibold text-gray-700 mb-3">
-                  🌐 Listening Ports ({machine.latest_data.network.listening_ports.length})
+                  🌐 Listening Ports ({machine.latest_port_count})
                 </h3>
                 <div className="bg-white rounded-lg shadow-sm overflow-hidden max-h-60 overflow-y-auto">
-                  {machine.latest_data.network.listening_ports.slice(0, 15).map((port: any, i: number) => (
+                  {machine.latest_listening_ports.map((port: any, i: number) => (
                     <div key={i} className="px-4 py-2 border-b text-sm flex justify-between">
                       <span className="font-medium">{port.process_name || 'Unknown'}</span>
                       <span className="text-gray-500">{port.protocol?.toUpperCase()} :{port.local_port}</span>
                     </div>
                   ))}
-                  {machine.latest_data.network.listening_ports.length > 15 && (
+                  {machine.latest_port_count > machine.latest_listening_ports.length && (
                     <div className="px-4 py-2 text-center text-gray-400 text-sm">
-                      ...and {machine.latest_data.network.listening_ports.length - 15} more
+                      ...and {machine.latest_port_count - machine.latest_listening_ports.length} more
                     </div>
                   )}
                 </div>
@@ -290,12 +298,12 @@ export default function MachineDetailPage({
             )}
 
             {/* Processes */}
-            {machine.latest_data?.running_processes && (
+            {machine.latest_processes.length > 0 && (
               <ProcessTable
-                processes={machine.latest_data.running_processes}
+                processes={machine.latest_processes}
                 maxRows={20}
                 showSearch={true}
-                title="⚙️ Running Processes"
+                title={`⚙️ Running Processes`}
               />
             )}
           </div>

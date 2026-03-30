@@ -3,6 +3,9 @@ import { getSupabase } from '@/lib/supabase';
 
 type SnapshotStatus = 'Pending' | 'Running' | 'Completed' | 'Failed';
 const DEFAULT_API_SECRET_KEY = 'sb_publishable_4cRWlmo693rt6aPU8Tmqjg_ZDnfLWJV';
+const LIST_CACHE_CONTROL = 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600';
+
+export const maxDuration = 5;
 
 function estimateSnapshotSizeBytes(payload: unknown): number {
   try {
@@ -32,6 +35,52 @@ function extractStatusError(data: any): string | null {
   return null;
 }
 
+function isMissingDerivedSnapshotColumnsError(message: unknown): boolean {
+  if (typeof message !== 'string') return false;
+  const value = message.toLowerCase();
+  const mentionsDerivedColumn =
+    value.includes('snapshot_status') ||
+    value.includes('snapshot_size_bytes') ||
+    value.includes('snapshot_error');
+
+  return (
+    mentionsDerivedColumn &&
+    (
+      (value.includes('column') && value.includes('does not exist')) ||
+      value.includes('schema cache')
+    )
+  );
+}
+
+type SnapshotInsertInput = {
+  machine_id: string;
+  machine_name: string;
+  snapshot_name: string;
+  timestamp: string;
+  data: unknown;
+  snapshot_status: SnapshotStatus;
+  snapshot_size_bytes: number;
+  snapshot_error: string | null;
+};
+
+async function insertSnapshotWithSchemaFallback(payload: SnapshotInsertInput) {
+  const fullInsert = await getSupabase()
+    .from('snapshots')
+    .insert(payload)
+    .select('id')
+    .single();
+
+  if (!fullInsert.error) return fullInsert;
+  if (!isMissingDerivedSnapshotColumnsError(fullInsert.error.message)) return fullInsert;
+
+  const { snapshot_status, snapshot_size_bytes, snapshot_error, ...legacyPayload } = payload;
+  return getSupabase()
+    .from('snapshots')
+    .insert(legacyPayload)
+    .select('id')
+    .single();
+}
+
 // Validate API key
 function isAuthorized(req: NextRequest) {
   const key = req.headers.get('x-api-key');
@@ -52,24 +101,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const { data: inserted, error } = await getSupabase()
-      .from('snapshots')
-      .insert({
-        machine_id,
-        machine_name: machine_name || machine_id,
-        snapshot_name,
-        timestamp: data.metadata?.timestamp || new Date().toISOString(),
-        data,
-        snapshot_status: extractStatus(data),
-        snapshot_size_bytes: estimateSnapshotSizeBytes(data),
-        snapshot_error: extractStatusError(data),
-      })
-      .select('id')
-      .single();
+    const { data: inserted, error } = await insertSnapshotWithSchemaFallback({
+      machine_id,
+      machine_name: machine_name || machine_id,
+      snapshot_name,
+      timestamp: data.metadata?.timestamp || new Date().toISOString(),
+      data,
+      snapshot_status: extractStatus(data),
+      snapshot_size_bytes: estimateSnapshotSizeBytes(data),
+      snapshot_error: extractStatusError(data),
+    });
 
     if (error) throw error;
 
-    return NextResponse.json({ success: true, id: inserted.id });
+    return NextResponse.json({ success: true, id: inserted!.id });
   } catch (e: any) {
     console.error('Error saving snapshot:', e);
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -88,7 +133,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const machine_id = searchParams.get('machine_id');
 
-  // Only select lightweight metadata columns — never fetch the full data blob here
+  // Try the lightweight query first (uses dedicated columns).
+  // Fall back to fetching `data` if the columns don't exist yet.
   let query = getSupabase()
     .from('snapshots')
     .select('id, machine_id, machine_name, snapshot_name, timestamp, snapshot_status, snapshot_size_bytes, snapshot_error')
@@ -99,18 +145,54 @@ export async function GET(req: NextRequest) {
   }
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!error) {
+    const rows = (data || []).map((row: any) => ({
+      id: row.id,
+      machine_id: row.machine_id,
+      machine_name: row.machine_name,
+      snapshot_name: row.snapshot_name,
+      timestamp: row.timestamp,
+      snapshot_size_bytes: row.snapshot_size_bytes ?? 0,
+      snapshot_status: normalizeStatus(row.snapshot_status),
+      snapshot_error: row.snapshot_error ?? null,
+    }));
 
-  const rows = (data || []).map((row: any) => ({
+    return NextResponse.json(rows, {
+      headers: { 'Cache-Control': LIST_CACHE_CONTROL },
+    });
+  }
+
+  // Backward-compatible fallback that still avoids fetching the large data blob.
+  if (!isMissingDerivedSnapshotColumnsError(error.message)) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  let legacyQuery = getSupabase()
+    .from('snapshots')
+    .select('id, machine_id, machine_name, snapshot_name, timestamp')
+    .order('timestamp', { ascending: false });
+
+  if (machine_id) {
+    legacyQuery = legacyQuery.eq('machine_id', machine_id);
+  }
+
+  const { data: legacyData, error: legacyError } = await legacyQuery;
+  if (legacyError) {
+    return NextResponse.json({ error: legacyError.message }, { status: 500 });
+  }
+
+  const rows = (legacyData || []).map((row: any) => ({
     id: row.id,
     machine_id: row.machine_id,
     machine_name: row.machine_name,
     snapshot_name: row.snapshot_name,
     timestamp: row.timestamp,
-    snapshot_size_bytes: row.snapshot_size_bytes ?? 0,
-    snapshot_status: normalizeStatus(row.snapshot_status),
-    snapshot_error: row.snapshot_error ?? null,
+    snapshot_size_bytes: 0,
+    snapshot_status: 'Completed' as SnapshotStatus,
+    snapshot_error: null,
   }));
 
-  return NextResponse.json(rows);
+  return NextResponse.json(rows, {
+    headers: { 'Cache-Control': LIST_CACHE_CONTROL },
+  });
 }

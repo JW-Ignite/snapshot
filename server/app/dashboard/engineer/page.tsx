@@ -30,42 +30,33 @@ export default function EngineerPage() {
   const [machines, setMachines] = useState<MachineData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
 
   const apiKey = process.env.NEXT_PUBLIC_API_KEY || DEFAULT_API_KEY;
 
+  const loadMachines = async () => {
+    try {
+      setRefreshing(true);
+      const res = await fetch('/api/machines', {
+        headers: { 'x-api-key': apiKey }
+      });
+
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+
+      const data = await res.json();
+      setMachines(Array.isArray(data) ? data : []);
+      setError('');
+    } catch (e: any) {
+      setError(`Failed to load machines: ${e.message}`);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
   useEffect(() => {
-    let isMounted = true;
-
-    const loadMachines = async () => {
-      try {
-        const res = await fetch('/api/machines', {
-          headers: { 'x-api-key': apiKey }
-        });
-
-        if (!res.ok) throw new Error(`Server returned ${res.status}`);
-
-        const data = await res.json();
-        if (isMounted) {
-          setMachines(Array.isArray(data) ? data : []);
-          setError('');
-          setLoading(false);
-        }
-      } catch (e: any) {
-        if (isMounted) {
-          setError(`Failed to load machines: ${e.message}`);
-          setLoading(false);
-        }
-      }
-    };
-
     loadMachines();
-    const interval = setInterval(loadMachines, 60000); // poll every 60s, not 3s
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
   }, [apiKey]);
 
   const handleSelectMachine = (machineId: string) => {
@@ -101,10 +92,21 @@ export default function EngineerPage() {
     <div>
       {/* Page Header */}
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Machine Overview</h2>
-        <p className="text-gray-500 mt-1">
-          {machines.length} machines connected. Click a card to view details and compare snapshots.
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800">Machine Overview</h2>
+            <p className="text-gray-500 mt-1">
+              {machines.length} machines connected. Manual refresh only to keep background traffic near zero.
+            </p>
+          </div>
+          <button
+            onClick={loadMachines}
+            disabled={refreshing}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-60"
+          >
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
       {/* Machine Grid */}

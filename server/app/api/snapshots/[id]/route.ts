@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 
 const DEFAULT_API_SECRET_KEY = 'sb_publishable_4cRWlmo693rt6aPU8Tmqjg_ZDnfLWJV';
+const DETAIL_CACHE_CONTROL = 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400';
+
+export const maxDuration = 5;
 
 function isAuthorized(req: NextRequest) {
   const key = req.headers.get('x-api-key');
@@ -29,6 +32,23 @@ function extractStatusError(data: any): string | null {
   return null;
 }
 
+function isMissingDerivedSnapshotColumnsError(message: unknown): boolean {
+  if (typeof message !== 'string') return false;
+  const value = message.toLowerCase();
+  const mentionsDerivedColumn =
+    value.includes('snapshot_status') ||
+    value.includes('snapshot_size_bytes') ||
+    value.includes('snapshot_error');
+
+  return (
+    mentionsDerivedColumn &&
+    (
+      (value.includes('column') && value.includes('does not exist')) ||
+      value.includes('schema cache')
+    )
+  );
+}
+
 // GET /api/snapshots/[id] — load full snapshot data
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!isAuthorized(req)) {
@@ -39,13 +59,36 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { data, error } = await getSupabase()
     .from('snapshots')
-    .select('*')
+    .select('id, machine_id, machine_name, snapshot_name, timestamp, data')
     .eq('id', id)
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 404 });
 
-  return NextResponse.json(data);
+  const processList = Array.isArray(data.data?.running_processes)
+    ? data.data.running_processes.slice(0, 20)
+    : [];
+  const listeningPorts = Array.isArray(data.data?.network?.listening_ports)
+    ? data.data.network.listening_ports.slice(0, 10)
+    : [];
+
+  return NextResponse.json({
+    id: data.id,
+    machine_id: data.machine_id,
+    machine_name: data.machine_name,
+    snapshot_name: data.snapshot_name,
+    timestamp: data.timestamp,
+    process_count: Array.isArray(data.data?.running_processes) ? data.data.running_processes.length : 0,
+    port_count: Array.isArray(data.data?.network?.listening_ports) ? data.data.network.listening_ports.length : 0,
+    data: {
+      integrity: data.data?.integrity ?? null,
+      system: data.data?.system ?? null,
+      network: { listening_ports: listeningPorts },
+      running_processes: processList,
+    },
+  }, {
+    headers: { 'Cache-Control': DETAIL_CACHE_CONTROL },
+  });
 }
 
 // DELETE /api/snapshots/[id]
@@ -93,16 +136,34 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
     }
 
-    const { data, error } = await getSupabase()
+    const fullUpdate = await getSupabase()
       .from('snapshots')
       .update(updates)
       .eq('id', id)
       .select('id')
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!fullUpdate.error) {
+      return NextResponse.json({ success: true, id: fullUpdate.data.id });
+    }
 
-    return NextResponse.json({ success: true, id: data.id });
+    if (!isMissingDerivedSnapshotColumnsError(fullUpdate.error.message)) {
+      return NextResponse.json({ error: fullUpdate.error.message }, { status: 500 });
+    }
+
+    const { snapshot_status, snapshot_size_bytes, snapshot_error, ...legacyUpdates } = updates;
+    const legacyUpdate = await getSupabase()
+      .from('snapshots')
+      .update(legacyUpdates)
+      .eq('id', id)
+      .select('id')
+      .single();
+
+    if (legacyUpdate.error) {
+      return NextResponse.json({ error: legacyUpdate.error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, id: legacyUpdate.data.id });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || 'Update failed' }, { status: 500 });
   }

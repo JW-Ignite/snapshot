@@ -140,41 +140,31 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [sortField, setSortField] = useState<SortField>('updated');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [query, setQuery] = useState('');
 
   const apiKey = process.env.NEXT_PUBLIC_API_KEY || DEFAULT_PUBLIC_API_KEY;
 
+  async function loadSnapshots() {
+    try {
+      setRefreshing(true);
+      const response = await fetch('/api/snapshots', { headers: { 'x-api-key': apiKey } });
+      if (!response.ok) throw new Error(`Server returned ${response.status}`);
+      const data = await response.json();
+      setSnapshots(Array.isArray(data) ? data : []);
+      setError('');
+    } catch (e: any) {
+      setError(`Failed to load snapshots: ${e.message}`);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
+
   useEffect(() => {
-    let isMounted = true;
-
-    const loadSnapshots = () => {
-      fetch('/api/snapshots', { headers: { 'x-api-key': apiKey } })
-        .then(async r => {
-          if (!r.ok) throw new Error(`Server returned ${r.status}`);
-          return r.json();
-        })
-        .then(data => {
-          if (!isMounted) return;
-          setSnapshots(Array.isArray(data) ? data : []);
-          setError('');
-          setLoading(false);
-        })
-        .catch((e) => {
-          if (!isMounted) return;
-          setError(`Failed to load snapshots: ${e.message}`);
-          setLoading(false);
-        });
-    };
-
     loadSnapshots();
-    const interval = setInterval(loadSnapshots, 60000); // poll every 60s, not 3s
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
   }, [apiKey]);
 
   async function loadSnapshot(id: string) {
@@ -283,11 +273,18 @@ export default function Dashboard() {
       {/* Sidebar */}
       <div className="w-80 bg-white border-r overflow-y-auto flex flex-col">
         <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
-          <h1 className="text-xl font-bold">Snapshot Server</h1>
+          <h1 className="text-xl font-bold">📸 Snapshot Server</h1>
           <p className="text-sm opacity-80">Multi-machine dashboard</p>
+          <button
+            onClick={loadSnapshots}
+            disabled={refreshing}
+            className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 disabled:opacity-60 rounded-lg text-sm font-medium transition-colors"
+          >
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
           <Link
             href="/dashboard/engineer"
-            className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
+            className="mt-3 ml-2 inline-flex items-center gap-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
           >
             <span>⚙️</span>
             Engineer Panel
@@ -335,13 +332,11 @@ export default function Dashboard() {
           <p className="text-xs text-gray-500">
             {totalMachines} machines · {snapshots.length} snapshots
           </p>
+          <p className="text-xs text-gray-400">Manual refresh only to keep Supabase egress and Vercel CPU low.</p>
         </div>
 
         {visibleMachines.map(machine => {
           return (
-            <div key={machineId} className="border-b">
-              <div className="px-4 py-2 bg-gray-50 font-semibold text-sm text-gray-600 uppercase tracking-wide">
-                {machineName}
             <div key={machine.machineId} className="border-b">
               <div className="px-4 py-2 bg-gray-50">
                 <div className="font-semibold text-sm text-gray-700 tracking-wide">
@@ -390,8 +385,6 @@ export default function Dashboard() {
       {/* Main content */}
       <div className="flex-1 overflow-y-auto">
         {!selected ? (
-          <div className="flex items-center justify-center h-full text-gray-400 text-lg">
-            Select a snapshot to view details
           <div className="p-8">
             <h2 className="text-2xl font-bold text-gray-800 mb-4">Organization Overview</h2>
             <p className="text-gray-500 mb-6">Sort machines by recency, name, or type from the sidebar. Select any snapshot to inspect full details.</p>
@@ -421,11 +414,11 @@ export default function Dashboard() {
               <div>
                 <h2 className="text-2xl font-bold text-gray-800">{selected.snapshot_name}</h2>
                 <p className="text-gray-400 text-sm mt-1">
-                  {new Date(selected.timestamp).toLocaleString()} · {selected.machine_name}
+                  {new Date(selected.timestamp).toLocaleString()} · 🖥️ {selected.machine_name}
                 </p>
                 {selected.data?.integrity && (
                   <p className="text-xs text-gray-400 font-mono mt-1">
-                    SHA256: {selected.data.integrity.sha256_checksum.substring(0, 16)}...
+                    ✓ SHA256: {selected.data.integrity.sha256_checksum.substring(0, 16)}...
                   </p>
                 )}
               </div>
@@ -433,7 +426,7 @@ export default function Dashboard() {
 
             {/* System Info */}
             <section className="mb-8">
-              <h3 className="text-lg font-semibold text-gray-700 mb-3">System Information</h3>
+              <h3 className="text-lg font-semibold text-gray-700 mb-3">💻 System Information</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {[
                   ['CPU', `${selected.data?.system?.cpu_brand}`],
@@ -453,7 +446,7 @@ export default function Dashboard() {
 
             {/* Network */}
             <section className="mb-8">
-              <h3 className="text-lg font-semibold text-gray-700 mb-3">Listening Ports</h3>
+              <h3 className="text-lg font-semibold text-gray-700 mb-3">🌐 Listening Ports</h3>
               <div className="bg-white rounded-lg shadow-sm overflow-hidden">
                 {selected.data?.network?.listening_ports?.slice(0, 10).map((port: any, i: number) => (
                   <div key={i} className="px-4 py-2 border-b text-sm flex justify-between">
@@ -467,7 +460,7 @@ export default function Dashboard() {
             {/* Processes */}
             <section>
               <h3 className="text-lg font-semibold text-gray-700 mb-3">
-                Top Processes ({selected.data?.running_processes?.length} total)
+                ⚙️ Top Processes ({selected.process_count ?? selected.data?.running_processes?.length ?? 0} total)
               </h3>
               <div className="bg-white rounded-lg shadow-sm overflow-hidden">
                 {selected.data?.running_processes?.slice(0, 20).map((proc: any, i: number) => (

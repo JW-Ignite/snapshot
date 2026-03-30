@@ -4,6 +4,9 @@ import { getSupabase } from '@/lib/supabase';
 type SnapshotStatus = 'Pending' | 'Running' | 'Completed' | 'Failed';
 type MachineType = 'Laptop' | 'Desktop' | 'Server' | 'Virtual Machine' | 'Unknown';
 type HealthStatus = 'healthy' | 'warning' | 'critical' | 'stale';
+const LIST_CACHE_CONTROL = 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600';
+
+export const maxDuration = 5;
 
 function isAuthorized(req: NextRequest) {
   const key = req.headers.get('x-api-key');
@@ -22,6 +25,20 @@ function normalizeStatus(value: unknown): SnapshotStatus {
 function extractStatus(data: any): SnapshotStatus {
   const candidate = data?.metadata?.snapshot_status || data?.metadata?.status;
   return normalizeStatus(candidate);
+}
+
+function isMissingDerivedSnapshotColumnsError(message: unknown): boolean {
+  if (typeof message !== 'string') return false;
+  const value = message.toLowerCase();
+  const mentionsDerivedColumn =
+    value.includes('snapshot_status') ||
+    value.includes('snapshot_size_bytes') ||
+    value.includes('snapshot_error');
+
+  return (
+    mentionsDerivedColumn &&
+    ((value.includes('column') && value.includes('does not exist')) || value.includes('schema cache'))
+  );
 }
 
 function inferMachineType(machineName: string, machineId: string): MachineType {
@@ -59,19 +76,43 @@ function estimateSnapshotSizeBytes(payload: unknown): number {
 }
 
 // GET /api/machines — list all machines with aggregated health metrics
+// Only fetches last N snapshots per machine to avoid massive queries
 export async function GET(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Only fetch lightweight metadata columns — never pull the full data blob
+  // Limit to last 10 snapshots globally to prevent egress explosion
+  const maxSnapshots = 10;
+
+  // Try lightweight query first; fall back to fetching data column if new columns don't exist
+  let rows: any[] = [];
+  let usedFallback = false;
+
   const { data, error } = await getSupabase()
     .from('snapshots')
     .select('id, machine_id, machine_name, snapshot_name, timestamp, snapshot_status, snapshot_size_bytes, snapshot_error')
-    .order('timestamp', { ascending: false });
+    .order('timestamp', { ascending: false })
+    .limit(maxSnapshots);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!isMissingDerivedSnapshotColumnsError(error.message)) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    const fallback = await getSupabase()
+      .from('snapshots')
+      .select('id, machine_id, machine_name, snapshot_name, timestamp')
+      .order('timestamp', { ascending: false })
+      .limit(maxSnapshots);
+
+    if (fallback.error) {
+      return NextResponse.json({ error: fallback.error.message }, { status: 500 });
+    }
+    rows = fallback.data || [];
+    usedFallback = true;
+  } else {
+    rows = data || [];
   }
 
   // Group snapshots by machine_id
@@ -82,9 +123,9 @@ export async function GET(req: NextRequest) {
     statuses: SnapshotStatus[];
   }>();
 
-  for (const row of data || []) {
+  for (const row of rows) {
     const existing = machineMap.get(row.machine_id);
-    const status = normalizeStatus(row.snapshot_status);
+    const status = usedFallback ? 'Completed' : normalizeStatus(row.snapshot_status);
 
     if (existing) {
       existing.snapshots.push(row);
@@ -111,6 +152,13 @@ export async function GET(req: NextRequest) {
       latest_snapshot_id: latestSnapshot?.id,
       latest_timestamp: latestSnapshot?.timestamp,
       health_status: computeHealthStatus(latestSnapshot?.timestamp || '', machine.statuses),
+      latest_memory_gb: null,
+      total_memory_gb: null,
+      latest_cpu_cores: null,
+      cpu_brand: null,
+      os_info: null,
+      active_process_count: 0,
+      listening_port_count: 0,
       largest_snapshot_bytes: machine.snapshots.reduce((max, snap) => {
         return Math.max(max, snap.snapshot_size_bytes ?? 0);
       }, 0),
@@ -124,5 +172,7 @@ export async function GET(req: NextRequest) {
     return b.latest_timestamp.localeCompare(a.latest_timestamp);
   });
 
-  return NextResponse.json(machines);
+  return NextResponse.json(machines, {
+    headers: { 'Cache-Control': LIST_CACHE_CONTROL },
+  });
 }
