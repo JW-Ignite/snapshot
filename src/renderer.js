@@ -60,7 +60,7 @@ let deltaList, snapshotsTabBtn, deltasTabBtn;
 let deltaCompareControls, deltaBeforeSelect, deltaAfterSelect, deltaCreateBtn;
 let trendStartDate, trendEndDate, trendGenerateBtn, trendAnalyticsPanel;
 let trendPreset24hBtn, trendPreset7dBtn;
-let fileSearchPathInput, fileSearchNameInput, fileSearchRegistryInput, fileSearchVersionInput;
+let fileSearchPathInput, fileSearchNameInput, fileSearchFolderInput, fileSearchProcessInput, fileSearchRegistryInput, fileSearchVersionInput;
 let fileSearchRunBtn, fileSearchResult;
 
 // Build the UI programmatically if HTML isn't present
@@ -205,6 +205,8 @@ function buildUI() {
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:8px; margin-bottom: 8px;">
               <input id="fileSearchPath" class="input-field" placeholder="File path or folder path" />
               <input id="fileSearchName" class="input-field" placeholder="File name (e.g. app.exe)" />
+              <input id="fileSearchFolder" class="input-field" placeholder="Folder name (e.g. Program Files)" />
+              <input id="fileSearchProcess" class="input-field" placeholder="Process name (e.g. chrome.exe)" />
               <input id="fileSearchRegistry" class="input-field" placeholder="Registry key (e.g. HKLM\\Software\\...)" />
               <input id="fileSearchVersion" class="input-field" placeholder="Expected version (e.g. 1.2.3.4)" />
             </div>
@@ -393,6 +395,8 @@ function initializeApp() {
   trendPreset7dBtn = document.getElementById('trendPreset7d');
   fileSearchPathInput = document.getElementById('fileSearchPath');
   fileSearchNameInput = document.getElementById('fileSearchName');
+  fileSearchFolderInput = document.getElementById('fileSearchFolder');
+  fileSearchProcessInput = document.getElementById('fileSearchProcess');
   fileSearchRegistryInput = document.getElementById('fileSearchRegistry');
   fileSearchVersionInput = document.getElementById('fileSearchVersion');
   fileSearchRunBtn = document.getElementById('fileSearchRunBtn');
@@ -429,29 +433,118 @@ function initializeApp() {
     }
 
     const status = (ok) => ok === true ? 'Match' : (ok === false ? 'No Match' : 'Not Checked');
-    const boolBadge = (ok) => ok === true ? 'warning' : (ok === false ? 'danger' : '');
+    const processStatus = (kind) => {
+      if (kind === 'match') return 'Match';
+      if (kind === 'possible') return 'Possible Match';
+      if (kind === 'none') return 'No Match';
+      return 'Not Checked';
+    };
+    const boolBadge = (ok) => {
+      if (ok === true || ok === 'possible') return 'warning';
+      if (ok === false) return 'danger';
+      return '';
+    };
 
-    const lines = [
-      { label: 'File Found', value: status(result.file?.found), raw: result.file?.found },
-      { label: 'Resolved Path', value: result.file?.resolved_path || 'N/A' },
-      { label: 'Searched Locations', value: Array.isArray(result.file?.searched_locations) && result.file.searched_locations.length > 0 ? result.file.searched_locations.join(' | ') : 'N/A' },
-      { label: 'File Name Match', value: status(result.file?.file_name_matches), raw: result.file?.file_name_matches },
-      { label: 'File Size', value: result.file?.metadata ? `${result.file.metadata.size_bytes} bytes (${result.file.metadata.size_mb} MB)` : 'N/A' },
-      { label: 'Created', value: result.file?.metadata?.created_at || 'N/A' },
-      { label: 'Last Modified', value: result.file?.metadata?.modified_at || 'N/A' },
-      { label: 'Last Accessed', value: result.file?.metadata?.accessed_at || 'N/A' },
-      { label: 'SHA256', value: result.file?.metadata?.sha256 || 'N/A' },
-      { label: 'MD5', value: result.file?.metadata?.md5 || 'N/A' },
-      { label: 'Product Name', value: result.file?.metadata?.windows_version_info?.ProductName || 'N/A' },
-      { label: 'Company', value: result.file?.metadata?.windows_version_info?.CompanyName || 'N/A' },
-      { label: 'File Version', value: result.file?.metadata?.windows_version_info?.FileVersion || result.version?.actual || 'N/A' },
-      { label: 'Product Version', value: result.file?.metadata?.windows_version_info?.ProductVersion || 'N/A' },
-      { label: 'Version Match', value: status(result.version?.matches), raw: result.version?.matches },
-      { label: 'Actual Version', value: result.version?.actual || 'N/A' },
-      { label: 'Registry Key Match', value: status(result.registry?.matches), raw: result.registry?.matches },
-    ];
+    const lines = [];
+    const hasFileCriteria = Boolean(result.input?.filePath || result.input?.fileName);
+    const hasFolderCriteria = Boolean(result.input?.folderName);
+    const hasProcessCriteria = Boolean(result.process?.searched_name);
+    const hasVersionCriteria = Boolean(result.input?.version);
+    const hasRegistryCriteria = Boolean(result.input?.registryKey);
 
-    const errors = [result.version?.error, result.registry?.error, result.file?.metadata_error].filter(Boolean);
+    if (hasFileCriteria) {
+      lines.push({ label: 'File Found', value: status(result.file?.found), raw: result.file?.found });
+      lines.push({ label: 'Resolved Path', value: result.file?.resolved_path || 'Not found' });
+      lines.push({
+        label: 'Searched Locations',
+        value: Array.isArray(result.file?.searched_locations) && result.file.searched_locations.length > 0
+          ? result.file.searched_locations.join(' | ')
+          : 'None'
+      });
+    }
+
+    if (hasFolderCriteria) {
+      lines.push({ label: 'Folder Found', value: status(result.folder?.found), raw: result.folder?.found });
+      lines.push({ label: 'Resolved Folder Path', value: result.folder?.resolved_path || 'Not found' });
+      if (result.folder?.folder_name_matches !== null && result.folder?.folder_name_matches !== undefined) {
+        lines.push({ label: 'Folder Name Match', value: status(result.folder.folder_name_matches), raw: result.folder.folder_name_matches });
+      }
+      lines.push({
+        label: 'Folder Search Locations',
+        value: Array.isArray(result.folder?.searched_locations) && result.folder.searched_locations.length > 0
+          ? result.folder.searched_locations.join(' | ')
+          : 'None'
+      });
+    }
+
+    if (hasProcessCriteria) {
+      lines.push({ label: 'Process Search Name', value: result.process.searched_name });
+      lines.push({
+        label: 'Running Process Match',
+        value: processStatus(result.process?.match_status),
+        raw: result.process?.match_status === 'match' ? true : (result.process?.match_status === 'possible' ? 'possible' : false)
+      });
+      lines.push({ label: 'Running Match Count', value: Number.isFinite(result.process?.match_count) ? String(result.process.match_count) : '0' });
+      lines.push({ label: 'Exact Match Count', value: Number.isFinite(result.process?.exact_match_count) ? String(result.process.exact_match_count) : '0' });
+      lines.push({ label: 'Possible Match Count', value: Number.isFinite(result.process?.possible_match_count) ? String(result.process.possible_match_count) : '0' });
+      lines.push({ label: 'Subprocess Count', value: Number.isFinite(result.process?.subprocess_match_count) ? String(result.process.subprocess_match_count) : '0' });
+    }
+
+    if (result.file?.file_name_matches !== null && result.file?.file_name_matches !== undefined) {
+      lines.push({ label: 'File Name Match', value: status(result.file.file_name_matches), raw: result.file.file_name_matches });
+    }
+
+    if (result.file?.metadata) {
+      const metadata = result.file.metadata;
+      lines.push({ label: 'File Size', value: `${metadata.size_bytes} bytes (${metadata.size_mb} MB)` });
+
+      if (metadata.created_at) lines.push({ label: 'Created', value: metadata.created_at });
+      if (metadata.modified_at) lines.push({ label: 'Last Modified', value: metadata.modified_at });
+      if (metadata.accessed_at) lines.push({ label: 'Last Accessed', value: metadata.accessed_at });
+      if (metadata.sha256) lines.push({ label: 'SHA256', value: metadata.sha256 });
+      if (metadata.md5) lines.push({ label: 'MD5', value: metadata.md5 });
+
+      const productName = metadata.windows_version_info?.ProductName;
+      const companyName = metadata.windows_version_info?.CompanyName;
+      const fileVersion = metadata.windows_version_info?.FileVersion || result.version?.actual;
+      const productVersion = metadata.windows_version_info?.ProductVersion;
+
+      if (productName) lines.push({ label: 'Product Name', value: productName });
+      if (companyName) lines.push({ label: 'Company', value: companyName });
+      if (fileVersion || hasVersionCriteria) lines.push({ label: 'File Version', value: fileVersion || 'Unavailable' });
+      if (productVersion) lines.push({ label: 'Product Version', value: productVersion });
+    }
+
+    if (hasVersionCriteria) {
+      lines.push({ label: 'Version Match', value: status(result.version?.matches), raw: result.version?.matches });
+      lines.push({ label: 'Actual Version', value: result.version?.actual || 'Unavailable' });
+    }
+
+    if (hasRegistryCriteria) {
+      lines.push({ label: 'Registry Key Match', value: status(result.registry?.matches), raw: result.registry?.matches });
+    }
+
+    const errors = [result.version?.error, result.registry?.error, result.file?.metadata_error, result.process?.error].filter(Boolean);
+    const processMatches = Array.isArray(result.process?.matches) ? result.process.matches : [];
+    const processMatchesText = processMatches.length > 0
+      ? processMatches
+        .slice(0, 10)
+        .map((p) => {
+          const matchLabel = p.match_type === 'match'
+            ? 'Match'
+            : (p.match_type === 'possible' ? 'Possible Match' : 'Subprocess');
+          const parentPart = p.match_type === 'subprocess' && Number.isFinite(p.ppid)
+            ? `, Parent PID ${p.ppid}`
+            : '';
+          return `${p.name || 'Unknown'} (PID ${p.pid ?? 'Unknown'}${parentPart}, ${matchLabel})`;
+        })
+        .join(' | ')
+      : (result.process?.searched_name ? 'None found' : 'Not checked');
+
+    if (hasProcessCriteria) {
+      lines.push({ label: 'Matching Running Processes', value: processMatchesText });
+    }
+
     const lineHtml = lines.map(line => `<div class="comparison-item ${boolBadge(line.raw)}"><strong>${line.label}:</strong> ${line.value}</div>`).join('');
     const errorHtml = errors.map(msg => `<div class="comparison-item danger">${msg}</div>`).join('');
     fileSearchResult.innerHTML = lineHtml + errorHtml;
@@ -462,11 +555,13 @@ function initializeApp() {
     const criteria = {
       filePath: fileSearchPathInput?.value || '',
       fileName: fileSearchNameInput?.value || '',
+      folderName: fileSearchFolderInput?.value || '',
+      processName: fileSearchProcessInput?.value || '',
       registryKey: fileSearchRegistryInput?.value || '',
       version: fileSearchVersionInput?.value || '',
     };
 
-    if (!criteria.filePath && !criteria.fileName && !criteria.registryKey && !criteria.version) {
+    if (!criteria.filePath && !criteria.fileName && !criteria.folderName && !criteria.processName && !criteria.registryKey && !criteria.version) {
       renderFileSearchResult({ error: 'Enter at least one field to search.' });
       return;
     }
@@ -475,6 +570,15 @@ function initializeApp() {
     fileSearchRunBtn.textContent = 'Checking...';
     try {
       const result = await ipcRenderer.invoke('file-search-check', criteria);
+      if (result && !result.process) {
+        result.process = {
+          searched_name: criteria.processName || criteria.fileName || (criteria.filePath ? criteria.filePath.split(/[/\\]/).pop() : null),
+          running: false,
+          match_count: 0,
+          matches: [],
+          error: 'Process search result was not returned by main process. Restart the app to load latest changes.',
+        };
+      }
       renderFileSearchResult(result);
     } catch (e) {
       renderFileSearchResult({ error: e.message || 'File search failed.' });
@@ -485,7 +589,7 @@ function initializeApp() {
   }
 
   if (fileSearchRunBtn) fileSearchRunBtn.addEventListener('click', runFileSearch);
-  [fileSearchPathInput, fileSearchNameInput, fileSearchRegistryInput, fileSearchVersionInput].forEach((el) => {
+  [fileSearchPathInput, fileSearchNameInput, fileSearchFolderInput, fileSearchProcessInput, fileSearchRegistryInput, fileSearchVersionInput].forEach((el) => {
     if (!el) return;
     el.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') {
@@ -1210,11 +1314,11 @@ function displaySnapshot(data) {
   const systemSection = document.querySelector('.system-info');
   systemSection.style.display = (run.cpu === false && run.memory === false && run.disk === false) ? 'none' : '';
 
-  document.getElementById('cpuManufacturer').textContent = data.system.cpu_manufacturer || 'N/A';
-  document.getElementById('cpuBrand').textContent = data.system.cpu_brand || 'N/A';
-  document.getElementById('cpuCores').textContent = data.system.cpu_cores || 'N/A';
+  document.getElementById('cpuManufacturer').textContent = data.system.cpu_manufacturer || 'Unavailable';
+  document.getElementById('cpuBrand').textContent = data.system.cpu_brand || 'Unavailable';
+  document.getElementById('cpuCores').textContent = data.system.cpu_cores || 'Unavailable';
   document.getElementById('totalMemory').textContent = `${data.system.total_memory_gb} GB (${data.system.used_memory_gb} GB used)`;
-  document.getElementById('osInfo').textContent = `${data.system.os_distro || 'N/A'} (${data.system.os_release || 'N/A'})`;
+  document.getElementById('osInfo').textContent = `${data.system.os_distro || 'Unavailable'} (${data.system.os_release || 'Unavailable'})`;
   document.getElementById('diskInfo').textContent = `${data.system.total_disk_size_gb} GB`;
 
   // Network section - hide entirely if not collected
@@ -1230,7 +1334,7 @@ function displaySnapshot(data) {
     data.network.interfaces.slice(0, 5).forEach(iface => {
       const item = document.createElement('div');
       item.className = 'detail-item';
-      item.innerHTML = `<strong>${iface.iface}</strong>: ${iface.ip4 || 'N/A'} (${iface.type || 'N/A'})`;
+      item.innerHTML = `<strong>${iface.iface}</strong>: ${iface.ip4 || 'Unavailable'} (${iface.type || 'Unavailable'})`;
       networkInterfaces.appendChild(item);
     });
   }
@@ -1284,7 +1388,7 @@ function displaySnapshot(data) {
     data.users.forEach(u => {
       const item = document.createElement('div');
       item.className = 'detail-item';
-      item.innerHTML = `<strong>${u.user}</strong> — tty: ${u.tty || 'N/A'} | logged in: ${u.date || ''} ${u.time || ''}`;
+      item.innerHTML = `<strong>${u.user}</strong> — tty: ${u.tty || 'Unavailable'} | logged in: ${u.date || ''} ${u.time || ''}`;
       usersList.appendChild(item);
     });
   } else if (run.users !== false) {
@@ -1587,7 +1691,7 @@ function displayComparison(comparison) {
 
     overallChangesList.innerHTML = lines.map((line) => {
       if (line.value === null || line.value === undefined) {
-        return `<div class="comparison-item">${line.label}: N/A</div>`;
+        return `<div class="comparison-item">${line.label}: Unavailable</div>`;
       }
       const numeric = Number(line.value);
       const sign = Number.isFinite(numeric) && numeric > 0 ? '+' : '';

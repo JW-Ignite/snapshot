@@ -84,12 +84,88 @@ function stripExtension(fileName) {
   return trimmed.slice(0, -ext.length);
 }
 
+function normalizeSearchToken(value) {
+  if (!value || typeof value !== 'string') return '';
+  return value.trim().replace(/^"+|"+$/g, '').toLowerCase();
+}
+
 function fileNamesMatchWithOrWithoutExtension(candidateName, requestedName) {
   if (!candidateName || !requestedName) return false;
   const c = candidateName.trim().toLowerCase();
   const r = requestedName.trim().toLowerCase();
   if (c === r) return true;
   return stripExtension(c) === stripExtension(r);
+}
+
+function getProcessMatchKind(proc, requestedName) {
+  if (!proc || !requestedName) return false;
+  const requested = normalizeSearchToken(requestedName);
+  if (!requested) return null;
+
+  const extractExecutableBaseName = (rawCommand) => {
+    if (!rawCommand || typeof rawCommand !== 'string') return '';
+    const trimmed = rawCommand.trim();
+    if (!trimmed) return '';
+
+    let executableToken = trimmed;
+    if (trimmed.startsWith('"')) {
+      const quotedMatch = trimmed.match(/^"([^"]+)"/);
+      if (quotedMatch?.[1]) executableToken = quotedMatch[1];
+    } else {
+      executableToken = trimmed.split(/\s+/)[0];
+    }
+
+    return path.basename(executableToken);
+  };
+
+  const commandBaseName = extractExecutableBaseName(proc.command || '');
+  const processPathBaseName = proc.path ? path.basename(proc.path) : '';
+  const name = normalizeSearchToken(proc.name || '');
+  const commandName = normalizeSearchToken(commandBaseName);
+  const pathName = normalizeSearchToken(processPathBaseName);
+  const requestedNoExt = stripExtension(requested);
+
+  const candidates = [name, commandName, pathName].filter(Boolean);
+  const candidateNoExt = candidates.map(c => stripExtension(c));
+
+  const isExact = candidates.some(c => fileNamesMatchWithOrWithoutExtension(c, requested));
+  if (isExact) return 'match';
+
+  // Possible match means search text is a substring of process name/executable.
+  const isPossible = candidateNoExt.some(c => c.includes(requestedNoExt));
+  if (isPossible) return 'possible';
+
+  return null;
+}
+
+function collectSubprocessMatches(allProcesses, seedPidSet) {
+  if (!Array.isArray(allProcesses) || seedPidSet.size === 0) return [];
+
+  const parentToChildren = new Map();
+  for (const p of allProcesses) {
+    const parentPid = p?.ppid;
+    if (!Number.isFinite(parentPid)) continue;
+    if (!parentToChildren.has(parentPid)) parentToChildren.set(parentPid, []);
+    parentToChildren.get(parentPid).push(p);
+  }
+
+  const descendants = [];
+  const queue = Array.from(seedPidSet);
+  const visited = new Set(seedPidSet);
+
+  while (queue.length > 0) {
+    const parentPid = queue.shift();
+    const children = parentToChildren.get(parentPid) || [];
+    for (const child of children) {
+      const pid = child?.pid;
+      if (!Number.isFinite(pid) || visited.has(pid)) continue;
+      visited.add(pid);
+      descendants.push(child);
+      queue.push(pid);
+    }
+  }
+
+  return descendants;
 }
 
 function findNearestExistingAncestor(inputPath) {
@@ -135,17 +211,57 @@ function findFileRecursive(startDir, targetFileName, maxEntries = 15000) {
   return null;
 }
 
+function findDirectoryRecursive(startDir, targetDirectoryName, maxEntries = 15000) {
+  if (!fs.existsSync(startDir)) return null;
+  let visited = 0;
+  const stack = [startDir];
+
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      visited += 1;
+      if (visited > maxEntries) return null;
+
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory() && fileNamesMatchWithOrWithoutExtension(entry.name, targetDirectoryName)) {
+        return fullPath;
+      }
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+      }
+    }
+  }
+
+  return null;
+}
+
 async function checkFileSearchCriteria(criteria = {}) {
   const filePathInput = normalizeInputPath(criteria.filePath || '');
   const fileNameInput = (criteria.fileName || '').trim();
+  const folderNameInput = (criteria.folderName || '').trim();
+  const processNameInput = (criteria.processName || '').trim();
   const registryKeyInput = (criteria.registryKey || '').trim();
   const expectedVersion = (criteria.version || '').trim();
+  const processSearchName = normalizeSearchToken(processNameInput || fileNameInput || (filePathInput ? path.basename(filePathInput) : ''));
 
   let resolvedFilePath = '';
   let fileFound = false;
   let fileExistsAtProvidedPath = false;
   let fileSearchMode = 'none';
   const searchedLocations = [];
+
+  let resolvedFolderPath = '';
+  let folderFound = false;
+  let folderExistsAtProvidedPath = false;
+  let folderSearchMode = 'none';
+  const folderSearchedLocations = [];
 
   if (filePathInput) {
     fileSearchMode = 'path';
@@ -219,6 +335,80 @@ async function checkFileSearchCriteria(criteria = {}) {
         if (rootMatch) {
           resolvedFilePath = rootMatch;
           fileFound = true;
+          break;
+        }
+      }
+    }
+  }
+
+  if (filePathInput) {
+    folderSearchMode = 'path';
+    folderSearchedLocations.push(filePathInput);
+    try {
+      const stat = fs.existsSync(filePathInput) ? fs.statSync(filePathInput) : null;
+      if (stat?.isDirectory()) {
+        resolvedFolderPath = filePathInput;
+        folderExistsAtProvidedPath = true;
+        folderFound = true;
+      }
+    } catch {
+      // Ignore stat errors and continue with fallback checks.
+    }
+  }
+
+  if (!folderFound && folderNameInput) {
+    folderSearchMode = filePathInput ? folderSearchMode : 'name-only';
+
+    if (filePathInput && fs.existsSync(filePathInput)) {
+      try {
+        const stat = fs.statSync(filePathInput);
+        const baseDir = stat.isDirectory() ? filePathInput : path.dirname(filePathInput);
+        const directFolderPath = path.join(baseDir, folderNameInput);
+        folderSearchedLocations.push(directFolderPath);
+
+        if (fs.existsSync(directFolderPath) && fs.statSync(directFolderPath).isDirectory()) {
+          resolvedFolderPath = directFolderPath;
+          folderFound = true;
+        } else {
+          const recursiveMatch = findDirectoryRecursive(baseDir, folderNameInput);
+          if (recursiveMatch) {
+            resolvedFolderPath = recursiveMatch;
+            folderFound = true;
+          }
+        }
+      } catch {
+        // Ignore and continue to other fallbacks.
+      }
+    }
+
+    if (!folderFound && filePathInput && !fs.existsSync(filePathInput)) {
+      const ancestor = findNearestExistingAncestor(filePathInput);
+      if (ancestor && fs.existsSync(ancestor) && fs.statSync(ancestor).isDirectory()) {
+        folderSearchMode = `${folderSearchMode}+ancestor-recursive`;
+        folderSearchedLocations.push(ancestor);
+        const ancestorMatch = findDirectoryRecursive(ancestor, folderNameInput);
+        if (ancestorMatch) {
+          resolvedFolderPath = ancestorMatch;
+          folderFound = true;
+        }
+      }
+    }
+
+    if (!folderFound) {
+      const roots = [
+        process.env['ProgramFiles'],
+        process.env['ProgramFiles(x86)'],
+        process.env['SystemRoot'],
+      ].filter(Boolean).map(normalizeInputPath);
+
+      for (const root of roots) {
+        if (!root || !fs.existsSync(root)) continue;
+        folderSearchMode = `${folderSearchMode}+common-roots`;
+        folderSearchedLocations.push(root);
+        const rootMatch = findDirectoryRecursive(root, folderNameInput, 25000);
+        if (rootMatch) {
+          resolvedFolderPath = rootMatch;
+          folderFound = true;
           break;
         }
       }
@@ -308,10 +498,80 @@ async function checkFileSearchCriteria(criteria = {}) {
     }
   }
 
+  let runningProcessMatches = [];
+  let processSearchError = null;
+  let exactProcessMatchCount = 0;
+  let possibleProcessMatchCount = 0;
+  let subprocessMatchCount = 0;
+  if (processSearchName) {
+    try {
+      const processData = await si.processes();
+      const allProcesses = Array.isArray(processData?.list) ? processData.list : [];
+      const matches = allProcesses.length > 0
+        ? allProcesses
+          .map(p => ({ p, matchKind: getProcessMatchKind(p, processSearchName) }))
+          .filter(x => Boolean(x.matchKind))
+        : [];
+
+      const seedPidSet = new Set(matches.map(({ p }) => p?.pid).filter(pid => Number.isFinite(pid)));
+      const subprocesses = collectSubprocessMatches(allProcesses, seedPidSet);
+
+      const enriched = [
+        ...matches.map(({ p, matchKind }) => ({ p, matchKind })),
+        ...subprocesses.map((p) => ({ p, matchKind: 'subprocess' })),
+      ];
+
+      runningProcessMatches = enriched.slice(0, 50).map(({ p, matchKind }) => ({
+        name: p.name || null,
+        pid: p.pid ?? null,
+        ppid: p.ppid ?? null,
+        command: p.command || null,
+        state: p.state || null,
+        user: p.user || null,
+        match_type: matchKind,
+      }));
+      exactProcessMatchCount = runningProcessMatches.filter(p => p.match_type === 'match').length;
+      possibleProcessMatchCount = runningProcessMatches.filter(p => p.match_type === 'possible').length;
+      subprocessMatchCount = runningProcessMatches.filter(p => p.match_type === 'subprocess').length;
+
+      // Fallback for cases where systeminformation omits or truncates process names.
+      if (runningProcessMatches.length === 0 && process.platform === 'win32') {
+        try {
+          const escaped = processSearchName.replace(/'/g, "''");
+          const psJson = await runPowerShell(`$n='${escaped}'; Get-Process | Where-Object { $_.ProcessName -like \"*$n*\" } | Select-Object ProcessName, Id | ConvertTo-Json -Compress`, 12000);
+          const parsed = psJson ? JSON.parse(psJson) : [];
+          const list = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+          runningProcessMatches = list.slice(0, 50).map(p => {
+            const rawName = p.ProcessName || '';
+            const kind = fileNamesMatchWithOrWithoutExtension(rawName, processSearchName) ? 'match' : 'possible';
+            return {
+              name: rawName || null,
+              pid: p.Id ?? null,
+              ppid: null,
+              command: null,
+              state: null,
+              user: null,
+              match_type: kind,
+            };
+          });
+          exactProcessMatchCount = runningProcessMatches.filter(p => p.match_type === 'match').length;
+          possibleProcessMatchCount = runningProcessMatches.filter(p => p.match_type === 'possible').length;
+          subprocessMatchCount = 0;
+        } catch {
+          // Keep the original result if PowerShell fallback fails.
+        }
+      }
+    } catch (e) {
+      processSearchError = e.message;
+    }
+  }
+
   return {
     input: {
       filePath: filePathInput || null,
       fileName: fileNameInput || null,
+      folderName: folderNameInput || null,
+      processName: processNameInput || null,
       registryKey: registryKeyInput || null,
       version: expectedVersion || null,
     },
@@ -325,6 +585,16 @@ async function checkFileSearchCriteria(criteria = {}) {
       metadata: fileMetadata,
       metadata_error: metadataError,
     },
+    folder: {
+      search_mode: folderSearchMode,
+      found: folderFound,
+      exists_at_provided_path: folderExistsAtProvidedPath,
+      resolved_path: resolvedFolderPath || null,
+      folder_name_matches: folderNameInput
+        ? (folderFound && fileNamesMatchWithOrWithoutExtension(path.basename(resolvedFolderPath), folderNameInput))
+        : null,
+      searched_locations: folderSearchedLocations,
+    },
     version: {
       expected: expectedVersion || null,
       actual: actualVersion,
@@ -335,6 +605,17 @@ async function checkFileSearchCriteria(criteria = {}) {
       key: registryKeyInput || null,
       matches: registryExists,
       error: registryError,
+    },
+    process: {
+      searched_name: processSearchName || null,
+      running: runningProcessMatches.length > 0,
+      match_status: exactProcessMatchCount > 0 ? 'match' : (possibleProcessMatchCount > 0 ? 'possible' : 'none'),
+      match_count: runningProcessMatches.length,
+      exact_match_count: exactProcessMatchCount,
+      possible_match_count: possibleProcessMatchCount,
+      subprocess_match_count: subprocessMatchCount,
+      matches: runningProcessMatches,
+      error: processSearchError,
     },
   };
 }
