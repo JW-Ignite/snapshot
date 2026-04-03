@@ -311,6 +311,22 @@ function buildUI() {
                 <h3>👤 Logged-in Users</h3>
                 <div id="usersList" class="details-list"></div>
               </section>
+
+              <section class="app-check-section">
+                <h3>App Installation Check</h3>
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
+                  <input
+                    type="text"
+                    id="appCheckInput"
+                    class="input-field"
+                    placeholder="App name (e.g. Slack, Zoom, Git...)"
+                    style="flex:1;"
+                  />
+                  <button id="appCheckBtn" class="btn btn-primary">Check</button>
+                </div>
+                <div id="appCheckResult" style="display:none;" class="integrity-info"></div>
+              </section>
+
             </div>
           </div>
         </div>
@@ -916,6 +932,53 @@ function initializeApp() {
   autoSnapshotToggle.addEventListener("change", async () => {
     const enabled = autoSnapshotToggle.checked;
     const minutes = parseInt(autoSnapshotIntervalInput.value, 10) || 5;
+
+    const appCheckBtn = document.getElementById("appCheckBtn");
+    const appCheckInput = document.getElementById("appCheckInput");
+    const appCheckResult = document.getElementById("appCheckResult");
+
+    if (appCheckBtn) {
+      appCheckBtn.addEventListener("click", async () => {
+        const name = appCheckInput.value.trim();
+        if (!name) return;
+
+        appCheckBtn.disabled = true;
+        appCheckBtn.textContent = "Checking...";
+        appCheckResult.style.display = "block";
+        appCheckResult.innerHTML = `<em>Checking "${name}"...</em>`;
+
+        try {
+          const result = await ipcRenderer.invoke("check-app-installed", name);
+
+          if (result.error) {
+            appCheckResult.innerHTML = `<span style="color:#e74c3c;">Error: ${result.error}</span>`;
+            return;
+        }
+
+          const color = result.installed ? "#2ecc71" : "#e74c3c";
+          const label = result.installed ? "✅ Installed" : "❌ Not found";
+          const signals = result.signals.length
+            ? `<ul style="margin:6px 0 0 0; padding-left:18px; font-size:12px;">
+                ${result.signals.map((s) => `<li>${s}</li>`).join("")}
+              </ul>`
+            : "";
+
+          appCheckResult.innerHTML = `
+            <strong style="color:${color};">${label}</strong> — ${result.app_name}
+            ${signals}
+          `;
+        } catch (e) {
+        appCheckResult.innerHTML = `<span style="color:#e74c3c;">Error: ${e.message}</span>`;
+        } finally {
+          appCheckBtn.disabled = false;
+          appCheckBtn.textContent = "Check";
+        }
+      });
+
+      appCheckInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") appCheckBtn.click();
+      });
+  }
     if (enabled) {
       await ipcRenderer.invoke("start-auto-snapshot", minutes);
     } else {

@@ -1440,191 +1440,67 @@ ipcMain.handle('reset-data-folder', async () => {
  * @returns {Promise<object>} { app_name, installed, confidence, signals_found,
  *                              signals_checked, found_paths, signals, platform, checked_at }
  */
-async function checkAppInstalled(appName, hints = {}) {
-  const platform = os.platform(); // 'win32' | 'darwin' | 'linux'
+async // --- App Installation Checker ---
+async function checkAppInstalled(appName) {
+  const platform = os.platform();
+  const lcName = appName.toLowerCase();
   const signals = [];
-  const foundPaths = [];
-  let installedSignals = 0;
-  let totalSignals = 0;
 
-  function safeExec(cmd, opts = {}) {
-    try {
-      return execSync(cmd, {
-        timeout: 6000,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        ...opts,
-      }).toString().trim();
-    } catch {
-      return null;
-    }
+  function safeExec(cmd) {
+    try { return execSync(cmd, { timeout: 5000, stdio: ['pipe','pipe','pipe'] }).toString().trim(); }
+    catch { return null; }
   }
 
-  function pathExists(p) {
-    try { return fs.existsSync(p); } catch { return false; }
-  }
-
-  function record(signal) {
-    signals.push(signal);
-    totalSignals++;
-    if (signal.found) {
-      installedSignals++;
-      if (signal.path) foundPaths.push(signal.path);
-    }
-  }
-
-  // ── 1. Explicit install paths (all platforms) ──────────────────────────────
-  for (const rawPath of (hints.installPaths || [])) {
-    const p = rawPath.replace(/^~/, os.homedir());
-    record({ type: 'explicit_path', found: pathExists(p), path: p });
-  }
-
-  // ── 2. Executable on PATH (all platforms) ──────────────────────────────────
+  // Executable on PATH (works everywhere)
   const whichCmd = platform === 'win32' ? 'where' : 'which';
-  const execNames = hints.executableNames || [appName.toLowerCase()];
-  for (const exe of execNames) {
-    const result = safeExec(`${whichCmd} ${exe}`);
-    const resolved = result ? result.split('\n')[0] : null;
-    record({ type: 'executable_on_path', found: !!resolved, executable: exe, path: resolved });
-  }
+  const onPath = safeExec(`${whichCmd} ${lcName}`);
+  if (onPath) signals.push(`Found on PATH: ${onPath.split('\n')[0]}`);
 
-  // ── 3. macOS-specific checks ───────────────────────────────────────────────
   if (platform === 'darwin') {
-    const macAppName = hints.macAppName || `${appName}.app`;
+    const appBundle = `/Applications/${appName}.app`;
+    if (fs.existsSync(appBundle)) signals.push(`App bundle: ${appBundle}`);
+    const spotlight = safeExec(`mdfind "kMDItemKind == 'Application' && kMDItemDisplayName == '${appName}'"`)?.split('\n')[0];
+    if (spotlight) signals.push(`Spotlight: ${spotlight}`);
 
-    // /Applications and ~/Applications
-    for (const base of ['/Applications', path.join(os.homedir(), 'Applications')]) {
-      const ap = path.join(base, macAppName);
-      record({ type: 'macos_app_bundle', found: pathExists(ap), path: ap });
-    }
-
-    // Spotlight lookup by bundle ID
-    if (hints.macBundleId) {
-      const found = safeExec(`mdfind "kMDItemCFBundleIdentifier == '${hints.macBundleId}'"`)
-        ?.split('\n')[0] || null;
-      record({ type: 'macos_bundle_id', found: !!found, bundleId: hints.macBundleId, path: found });
-    }
-
-    // Spotlight lookup by display name
-    const byName = safeExec(
-      `mdfind "kMDItemKind == 'Application' && kMDItemDisplayName == '${appName}'"`,
-    )?.split('\n')[0] || null;
-    record({ type: 'macos_spotlight_name', found: !!byName, path: byName });
-  }
-
-  // ── 4. Windows-specific checks ─────────────────────────────────────────────
-  if (platform === 'win32') {
-    const searchTerm = hints.windowsBundleId || appName;
-
-    // Registry uninstall keys (system-wide, WOW64, and per-user)
+  } else if (platform === 'win32') {
     const regKeys = [
       'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
       'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
       'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
     ];
     for (const key of regKeys) {
-      const out = safeExec(`reg query "${key}" /s /f "${searchTerm}" /d`);
-      record({ type: 'windows_registry', found: !!(out && out.includes(searchTerm)), key });
+      const hit = safeExec(`reg query "${key}" /s /f "${appName}" /d`);
+      if (hit?.includes(appName)) { signals.push(`Registry: ${key}`); break; }
     }
+    const appx = safeExec(`powershell -NoProfile -Command "Get-AppxPackage *${appName}* | Select-Object -First 1 -ExpandProperty Name"`, { timeout: 10000 });
+    if (appx) signals.push(`AppX package: ${appx}`);
 
-    // Common install directories
-    const bases = [
-      process.env['ProgramFiles']        || 'C:\\Program Files',
-      process.env['ProgramFiles(x86)']   || 'C:\\Program Files (x86)',
-      process.env['LOCALAPPDATA']        || path.join(os.homedir(), 'AppData', 'Local'),
-    ];
-    for (const base of bases) {
-      const p = path.join(base, appName);
-      record({ type: 'windows_install_dir', found: pathExists(p), path: p });
-    }
-
-    // MSIX / UWP via PowerShell Get-AppxPackage
-    const psOut = safeExec(
-      `powershell -NoProfile -Command "Get-AppxPackage *${appName}* | ` +
-      `Select-Object -First 1 -ExpandProperty Name"`,
-      { timeout: 12000 },
-    );
-    record({ type: 'windows_appx_package', found: !!psOut, packageName: psOut });
-  }
-
-  // ── 5. Linux-specific checks ───────────────────────────────────────────────
-  if (platform === 'linux') {
-    const pkgNames = hints.linuxPackageNames || [appName.toLowerCase()];
-
-    for (const pkg of pkgNames) {
-      // dpkg (Debian/Ubuntu)
-      const dpkg = safeExec(`dpkg -s ${pkg} 2>/dev/null | grep -E "^Status:"`);
-      if (dpkg?.includes('installed')) {
-        record({ type: 'linux_dpkg', found: true, package: pkg });
-        continue;
-      }
-      // rpm (Fedora/RHEL/openSUSE)
-      const rpm = safeExec(`rpm -q ${pkg} 2>/dev/null`);
-      if (rpm && !rpm.includes('not installed')) {
-        record({ type: 'linux_rpm', found: true, package: pkg });
-        continue;
-      }
-      // pacman (Arch)
-      const pacman = safeExec(`pacman -Qi ${pkg} 2>/dev/null`);
-      if (pacman) {
-        record({ type: 'linux_pacman', found: true, package: pkg });
-        continue;
-      }
-      record({ type: 'linux_package_manager', found: false, package: pkg });
-    }
-
-    // Common binary/install locations
-    const lcName = appName.toLowerCase();
-    for (const p of [
-      `/usr/bin/${lcName}`,
-      `/usr/local/bin/${lcName}`,
-      `/opt/${lcName}`,
-      `/opt/${appName}`,
-      `/snap/bin/${lcName}`,
-    ]) {
-      record({ type: 'linux_install_path', found: pathExists(p), path: p });
-    }
-
-    // Flatpak
-    const flatpak = safeExec(`flatpak list --app --columns=application 2>/dev/null | grep -i "${lcName}"`);
-    record({ type: 'linux_flatpak', found: !!flatpak, match: flatpak?.split('\n')[0] || null });
-
-    // Snap
-    const snap = safeExec(`snap list 2>/dev/null | grep -i "${lcName}"`);
-    record({ type: 'linux_snap', found: !!snap, match: snap?.split('\n')[0] || null });
-  }
-
-  // ── 6. Determine overall verdict and confidence ───────────────────────────
-  const installed = installedSignals > 0;
-  let confidence;
-  if (installedSignals === 0) {
-    confidence = 'none';        // No evidence of installation
-  } else if (installedSignals >= 2) {
-    confidence = 'high';        // Multiple independent signals agree
   } else {
-    confidence = 'low';         // Only one signal found — possible but uncertain
+    // Linux: try common package managers
+    const dpkg = safeExec(`dpkg -s ${lcName} 2>/dev/null | grep "^Status:"`);
+    if (dpkg?.includes('installed')) signals.push(`dpkg: installed`);
+    const rpm = safeExec(`rpm -q ${lcName} 2>/dev/null`);
+    if (rpm && !rpm.includes('not installed')) signals.push(`rpm: ${rpm}`);
+    const flatpak = safeExec(`flatpak list --app 2>/dev/null | grep -i "${lcName}"`);
+    if (flatpak) signals.push(`Flatpak: ${flatpak.split('\n')[0]}`);
+    const snap = safeExec(`snap list 2>/dev/null | grep -i "${lcName}"`);
+    if (snap) signals.push(`Snap: ${snap.split('\n')[0]}`);
   }
 
   return {
     app_name: appName,
-    installed,
-    confidence,          // 'high' | 'low' | 'none'
-    signals_found: installedSignals,
-    signals_checked: totalSignals,
-    found_paths: [...new Set(foundPaths)],
-    signals,             // Full signal-by-signal breakdown
+    installed: signals.length > 0,
+    signals, // what specifically was found
     platform,
-    checked_at: new Date().toISOString(),
   };
 }
 
-// IPC: Check a single app
-// Usage: ipcRenderer.invoke('check-app-installed', 'Slack', { macBundleId: 'com.tinyspeck.slackmacgap' })
-ipcMain.handle('check-app-installed', async (event, appName, hints) => {
+ipcMain.handle('check-app-installed', async (event, appName) => {
   try {
-    return await checkAppInstalled(appName, hints || {});
+    return await checkAppInstalled(appName);
   } catch (e) {
-    console.error('Error checking app installation:', e);
-    return { app_name: appName, installed: false, confidence: 'none', error: e.message };
+    console.error('Error checking app:', e);
+    return { app_name: appName, installed: false, signals: [], error: e.message };
   }
 });
 
