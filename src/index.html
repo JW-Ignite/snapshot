@@ -5,16 +5,825 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>System Snapshot Viewer</title>
-  <link rel="stylesheet" href="index.css" />
+  <!-- Content Security Policy: allow inline styles and Google Fonts for dev server -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:;">
+  <!-- Inline stylesheet to avoid separate CSS request that may be served as HTML by the dev server -->
+  <style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+/* ╔══════════════════════════════════════╗
+   ║         VIBRANT COLOR PALETTE        ║
+   ╚══════════════════════════════════════╝ */
+:root {
+  --bg:           #0a0a0a;
+  --surface:      #111111;
+  --surface-2:    #1a1a1a;
+  --surface-3:    #222222;
+
+  --text:         #ffffff;
+  --text-2:       #aaaaaa;
+  --text-3:       #555555;
+
+  --violet:       #ffffff;
+  --violet-light: #cccccc;
+  --violet-glow:  rgba(255, 255, 255, 0.08);
+
+  --pink:         #bbbbbb;
+  --pink-light:   #dddddd;
+  --pink-glow:    rgba(255, 255, 255, 0.06);
+
+  --cyan:         #888888;
+  --cyan-light:   #cccccc;
+  --cyan-glow:    rgba(255, 255, 255, 0.06);
+
+  --lime:         #ffffff;
+  --lime-light:   #dddddd;
+  --lime-glow:    rgba(255, 255, 255, 0.06);
+
+  --amber:        #aaaaaa;
+  --amber-light:  #cccccc;
+
+  --red:          #ffffff;
+  --red-glow:     rgba(255, 255, 255, 0.08);
+
+  --border:       rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.16);
+
+  --radius-sm:    6px;
+  --radius-md:    12px;
+  --radius-lg:    18px;
+  --radius-xl:    24px;
+}
+
+/* ══════════════════════════════════════ */
+/* RESET                                  */
+/* ══════════════════════════════════════ */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body { height: 100%; }
+
+body {
+  font-family: 'Poppins', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow: hidden;
+}
+
+/* ══════════════════════════════════════ */
+/* LAYOUT                                 */
+/* ══════════════════════════════════════ */
+.container {
+  display: grid;
+  grid-template-rows: 64px 1fr;
+  height: 100vh;
+}
+
+/* ══════════════════════════════════════ */
+/* HEADER                                 */
+/* ══════════════════════════════════════ */
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+header h1 {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  background: linear-gradient(135deg, #ffffff, #888888);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  white-space: nowrap;
+}
+
+header .subtitle {
+  font-size: 12px;
+  color: var(--text-3);
+  font-family: 'Space Mono', monospace;
+}
+
+/* ══════════════════════════════════════ */
+/* MAIN CONTENT                           */
+/* ══════════════════════════════════════ */
+.main-content {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  overflow: hidden;
+  transition: grid-template-columns 0.3s ease;
+}
+
+.main-content.sidebar-collapsed {
+  grid-template-columns: 0px 1fr;
+}
+
+/* ══════════════════════════════════════ */
+/* SIDEBAR                                */
+/* ══════════════════════════════════════ */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  min-width: 0;
+}
+
+.sidebar-collapsed .sidebar {
+  border-right-color: transparent;
+}
+
+.sidebar > * {
+  transition: opacity 0.15s ease;
+}
+
+.sidebar-collapsed .sidebar > * {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ══════════════════════════════════════ */
+/* SIDEBAR TOGGLE BUTTON                  */
+/* ══════════════════════════════════════ */
+.sidebar-toggle {
+  position: fixed;
+  left: 240px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 100;
+  width: 20px;
+  height: 48px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+  transition: all 0.3s ease;
+  padding: 0;
+}
+
+.sidebar-toggle:hover {
+  background: var(--surface-3);
+  color: var(--violet-light);
+  border-color: var(--violet);
+  width: 24px;
+}
+
+.sidebar-collapsed .sidebar-toggle {
+  left: 0px;
+  border-left: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.sidebar-toggle-icon {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  transition: transform 0.3s ease;
+  display: inline-block;
+  color: inherit;
+}
+
+.sidebar-collapsed .sidebar-toggle-icon {
+  transform: rotate(180deg);
+}
+
+.snapshot-controls {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.snapshot-list-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 10px;
+}
+
+.snapshot-list-container h2 {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-3);
+  margin-bottom: 10px;
+  padding: 0 6px;
+}
+
+.snapshot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.snapshot-item {
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  color: var(--text-2);
+  position: relative;
+}
+
+.snapshot-item:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.snapshot-item.active {
+  background: var(--violet-glow);
+  border-color: var(--violet);
+  color: var(--violet-light);
+  font-weight: 600;
+}
+
+.snapshot-item.active::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  background: var(--violet-light);
+  border-radius: 0 3px 3px 0;
+}
+
+/* ══════════════════════════════════════ */
+/* MAIN VIEW                              */
+/* ══════════════════════════════════════ */
+.main-view {
+  overflow-y: auto;
+  background: var(--bg);
+  padding: 28px 32px;
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-3);
+  font-size: 15px;
+}
+
+.snapshot-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* ══════════════════════════════════════ */
+/* DETAIL HEADER                          */
+/* ══════════════════════════════════════ */
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-header h2 {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+  margin-bottom: 6px;
+}
+
+.timestamp {
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.integrity-info {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  color: var(--cyan-light);
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: var(--cyan-glow);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--cyan);
+}
+
+/* ══════════════════════════════════════ */
+/* SECTIONS                               */
+/* ══════════════════════════════════════ */
+section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+section h3 {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+section h3::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ══════════════════════════════════════ */
+/* INFO GRID — single card layout         */
+/* ══════════════════════════════════════ */
+.info-grid {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.info-item {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+
+.info-item:last-child {
+  border-bottom: none;
+}
+
+.info-item:hover {
+  background: var(--surface-2);
+}
+
+.info-item .label {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-3);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.info-item .value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.1px;
+}
+
+/* ══════════════════════════════════════ */
+/* PROCESS LIST                           */
+/* ══════════════════════════════════════ */
+.process-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.process-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface);
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  transition: all 0.15s;
+}
+
+.process-item:hover {
+  background: var(--surface-2);
+  border-color: var(--border-hover);
+}
+
+.process-name {
+  font-weight: 600;
+  flex: 1;
+  color: var(--text);
+}
+
+.process-pid {
+  background: var(--surface-3);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  color: var(--cyan-light);
+  margin: 0 12px;
+}
+
+.process-stats {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--text-3);
+  font-family: 'Space Mono', monospace;
+}
+
+/* ══════════════════════════════════════ */
+/* BUTTONS                                */
+/* ══════════════════════════════════════ */
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: 'Poppins', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: #ffffff;
+  color: #000000;
+  box-shadow: none;
+}
+
+.btn-primary:hover {
+  background: #dddddd;
+  box-shadow: none;
+  transform: translateY(-1px);
+}
+
+.btn-danger {
+  background: transparent;
+  color: #ff6b6b;
+  border: 1px solid #ff6b6b;
+}
+
+.btn-danger:hover {
+  background: rgba(255, 107, 107, 0.12);
+  box-shadow: none;
+}
+
+.btn-upload {
+  background: transparent;
+  color: #aaaaaa;
+  border: 1px solid #555555;
+}
+
+.btn-upload:hover {
+  background: rgba(255,255,255,0.06);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.snapshot-controls .btn-primary {
+  width: 100%;
+}
+
+/* ══════════════════════════════════════ */
+/* INPUT                                  */
+/* ══════════════════════════════════════ */
+.input-field {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: 'Poppins', sans-serif;
+  font-size: 13px;
+  background: var(--surface-2);
+  color: var(--text);
+  transition: all 0.2s;
+}
+
+.input-field::placeholder {
+  color: var(--text-3);
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: var(--violet);
+  box-shadow: 0 0 0 3px var(--violet-glow);
+}
+
+.search-bar {
+  margin-bottom: 14px;
+}
+
+/* ══════════════════════════════════════ */
+/* HEADER BUTTONS                         */
+/* ══════════════════════════════════════ */
+.header-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.header-buttons .input-field {
+  min-width: 140px;
+  width: auto;
+}
+
+/* ══════════════════════════════════════ */
+/* COMPARISON                             */
+/* ══════════════════════════════════════ */
+.comparison-view {
+  padding: 20px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+}
+
+.comparison-view h3 {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-3);
+  margin-bottom: 16px;
+}
+
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.comparison-card {
+  background: var(--surface-2);
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.comparison-card h4 {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-3);
+  margin-bottom: 10px;
+}
+
+.comparison-list {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.comparison-item {
+  padding: 7px 10px;
+  background: var(--surface);
+  border-radius: 4px;
+  font-size: 12px;
+  border-left: 3px solid(var(--text-3));
+  color: var(--text-2);
+}
+
+.comparison-item.warning {
+  border-left-color: var(--amber);
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--amber-light);
+}
+
+.comparison-item.danger {
+  border-left-color: var(--red);
+  background: var(--red-glow);
+  color: #fda4af;
+}
+
+/* ══════════════════════════════════════ */
+/* NETWORK & FILESYSTEM                   */
+/* ══════════════════════════════════════ */
+.network-section,
+.filesystem-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.network-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.network-info > div {
+  background: var(--surface);
+  padding: 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.network-info strong {
+  display: block;
+  margin-bottom: 12px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--cyan-light);
+}
+
+.details-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.detail-item {
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  color: var(--text-2);
+  border-left: 3px solid var(--violet);
+}
+
+/* ══════════════════════════════════════ */
+/* SCROLLBAR                              */
+/* ══════════════════════════════════════ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-3);
+}
+
+/* ══════════════════════════════════════ */
+/* UTILITIES                              */
+/* ══════════════════════════════════════ */
+.loading {
+  text-align: center;
+  color: var(--text-3);
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  padding: 24px;
+}
+
+.loading::after {
+  content: '...';
+  animation: dots 1.2s steps(3, end) infinite;
+}
+
+@keyframes dots {
+  0%, 20%  { content: '.'; }
+  40%      { content: '..'; }
+  60%,100% { content: '...'; }
+}
+
+/* ══════════════════════════════════════ */
+/* SYSTEM INFO PANEL                      */
+/* ══════════════════════════════════════ */
+.info-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-row:hover {
+  background: var(--surface-2);
+}
+
+.info-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-3);
+  width: 180px;
+  flex-shrink: 0;
+}
+
+.info-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* ══════════════════════════════════════ */
+/* CUSTOM STYLES                         */
+/* ══════════════════════════════════════ */
+.detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.system-info {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.network-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.filesystem-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.processes-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.search-bar {
+  display: flex;
+  gap: 8px;
+}
+
+.search-bar input {
+  flex: 1;
+}
+
+/* ══════════════════════════════════════ */
+/* SCRIPTING                              */
+/* ══════════════════════════════════════ */
+  </style>
 </head>
 
 <body>
   <div class="container">
     <header>
-      <h1>System Snapshot Viewer</h1>
-      <p class="subtitle">View and manage system snapshots</p>
-      <div class="header-actions">
-        <button id="settingsBtn" class="btn btn-upload">Settings</button>
+      <div style="display:flex; gap:12px; align-items:center;">
+        <h1>System Snapshot Viewer</h1>
+        <p class="subtitle">View and manage system snapshots</p>
+      </div>
+      <div>
+        <button id="settingsBtn" class="btn" style="padding:6px 10px;">Settings</button>
       </div>
     </header>
 
@@ -58,7 +867,8 @@
             </div>
           </div>
 
-          <div id="comparisonView" class="comparison-view" style="display: none;">
+          <div id="comparisonView" class="comparison-view" style="display: none; position:relative;">
+            <button id="comparisonCloseBtn" class="btn" style="position:absolute; right:12px; top:12px; padding:6px 8px;">✕</button>
             <h3>Comparison Results</h3>
             <div class="comparison-grid">
               <div class="comparison-card">
@@ -142,131 +952,413 @@
           </div>
         </div>
 
-        <!-- Settings Page (mirrors snapshot detail layout) -->
-        <div id="settingsPage" class="snapshot-detail settings-page" style="display: none;">
+        <!-- Settings Page (keeps same layout as snapshotDetail) -->
+        <div id="settingsPage" class="snapshot-detail" style="display: none;">
           <div class="detail-header">
             <div>
-              <h2>Settings</h2>
-              <p class="timestamp">Application Preferences & Configuration</p>
+              <h2 style="margin:0; font-size:20px;">Settings</h2>
+              <p id="settingsSubtitle" class="timestamp">Application preferences and data controls</p>
             </div>
             <div class="header-buttons">
-              <button id="saveSettingsBtn" class="btn btn-primary">Save</button>
-              <button id="resetSettingsBtn" class="btn btn-upload">Reset</button>
+              <button id="backToSnapshotsBtn" class="btn btn-primary">Back to snapshots</button>
             </div>
           </div>
 
           <div class="detail-content">
             <section>
-              <h3>General</h3>
-              <div class="info-panel settings-form">
-                <div class="info-row">
-                  <span class="info-label">Application Theme</span>
-                  <div class="info-value">
-                    <select id="appTheme" class="input-field" style="max-width:200px;">
-                      <option value="dark">Dark</option>
-                      <option value="light">Light</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Auto-refresh</span>
-                  <div class="info-value">
-                    <label><input type="checkbox" id="autoRefresh" /> Enable auto-refresh snapshots</label>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section>
-              <h3>Integrations</h3>
-              <div class="info-panel settings-form">
-                <div class="info-row">
-                  <span class="info-label">Remote Upload URL</span>
-                  <input id="uploadUrl" class="input-field" placeholder="https://example.com/upload" />
-                </div>
-                <div class="info-row">
-                  <span class="info-label">API Token</span>
-                  <input id="apiToken" class="input-field" placeholder="••••••••" />
-                </div>
-              </div>
-            </section>
-
-            <section>
-              <h3>About</h3>
+              <h3>Automatic Snapshots</h3>
               <div class="info-panel">
                 <div class="info-row">
-                  <span class="info-label">Version</span>
-                  <span class="info-value">1.0.0</span>
+                  <div style="flex:1;">
+                    <div style="font-weight:600; margin-bottom:6px;">Automatically take snapshots at a regular interval</div>
+                    <div style="display:flex; gap:12px; align-items:center;">
+                      <label style="display:inline-flex; align-items:center; gap:8px;">
+                        <input type="checkbox" id="autoSnapshotToggleTop"> Enable auto-snapshots
+                      </label>
+                      <div id="autoSnapshotStatus" style="font-family: 'Space Mono', monospace; color:var(--text-3);">Auto-snapshots: Off</div>
+                    </div>
+                    <div style="margin-top:10px; display:flex; align-items:center; gap:10px;">
+                      <label style="min-width:160px;">Interval (minutes)</label>
+                      <input id="autoSnapshotInterval" type="number" min="1" max="1440" value="5" style="width:100px; padding:6px;"> 
+                      <div style="color:var(--text-3); font-family:'Space Mono', monospace; font-size:12px;">How often to take automatic snapshots (1–1440 min)</div>
+                    </div>
+                  </div>
                 </div>
+
                 <div class="info-row">
-                  <span class="info-label">Build</span>
-                  <span class="info-value">local</span>
+                  <span class="info-label">Auto-snapshots</span>
+                  <div class="info-value" style="display:flex; align-items:center; gap:12px;">
+                    <div id="autoSnapshotSummary">Auto-snapshots: Off</div>
+                  </div>
+                </div>
+
+                <div class="info-row">
+                  <span class="info-label">Max Snapshots to Keep</span>
+                  <div class="info-value">
+                    <input id="maxSnapshotsInput" type="number" min="0" value="0" style="width:120px; padding:6px;"> (0 = unlimited)
+                    <div style="margin-top:6px; color:var(--text-3); font-family:'Space Mono', monospace; font-size:12px;">Oldest unpinned snapshots are auto-deleted when this limit is exceeded.</div>
+                  </div>
+                </div>
+
+                <div class="info-row">
+                  <span class="info-label">Include in snapshot</span>
+                  <div class="info-value">
+                    <label style="display:inline-flex; align-items:center; gap:8px;"><input type="checkbox" id="td_cpu" checked> CPU &amp; OS</label>
+                    <label style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;"><input type="checkbox" id="td_memory" checked> Memory</label>
+                    <label style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;"><input type="checkbox" id="td_processes" checked> Processes</label>
+                    <label style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;"><input type="checkbox" id="td_network" checked> Network</label>
+                    <label style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;"><input type="checkbox" id="td_disk" checked> Disk &amp; FS</label>
+                    <label style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;"><input type="checkbox" id="td_users" checked> Users</label>
+                  </div>
+                </div>
+
+                <div class="info-row">
+                  <div style="width:100%; display:flex; justify-content:flex-end; gap:8px;">
+                    <button id="saveSettingsBtn" class="btn btn-primary">Save</button>
+                    <button id="cancelSettingsBtn" class="btn">Cancel</button>
+                  </div>
+                </div>
+
+              </div>
+            </section>
+
+            <section>
+              <h3>Data Folder</h3>
+              <div class="info-panel">
+                <div class="info-row">
+                  <span class="info-label">Location</span>
+                  <div class="info-value">
+                    <div id="dataFolderPath">-</div>
+                    <div style="margin-top:8px; display:flex; gap:8px;">
+                      <button id="openDataFolderBtn" class="btn">📂 Open</button>
+                      <button id="moveDataFolderBtn" class="btn">📁 Move</button>
+                      <button id="resetDataFolderBtn" class="btn">↩️ Reset</button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
+
           </div>
         </div>
 
-      </div>
     </div>
   </div>
 
+  <!-- Renderer IPC wiring -->
   <script>
-    document.addEventListener('DOMContentLoaded', function () {
-      // Hash-based view router. Settings is its own page at #settings
-      function renderFromHash() {
-        const hash = location.hash || '#';
-        const isSettings = hash === '#settings';
-
-        const sd = document.getElementById('snapshotDetail');
-        const es = document.getElementById('emptyState');
-        const sp = document.getElementById('settingsPage');
-
-        // Show settings page exclusively when hash is #settings
-        if (sd) sd.style.display = isSettings ? 'none' : (document.querySelector('.snapshot-item.active') ? 'flex' : 'none');
-        if (es) es.style.display = isSettings ? 'none' : (document.querySelector('.snapshot-item.active') ? 'none' : 'flex');
-        if (sp) sp.style.display = isSettings ? 'flex' : 'none';
-
-        // update title for clarity
-        document.title = isSettings ? 'Settings - System Snapshot Viewer' : 'System Snapshot Viewer';
+    (function(){
+      // require is available because nodeIntegration is enabled in main.js
+      const { ipcRenderer } = window.require ? window.require('electron') : null;
+      if (!ipcRenderer) {
+        console.warn('ipcRenderer not available in renderer');
+        return;
       }
 
-      // initial render and listen for hash changes
-      window.addEventListener('hashchange', renderFromHash);
-      renderFromHash();
-
-      const settingsBtn = document.getElementById('settingsBtn');
-      if (settingsBtn) settingsBtn.addEventListener('click', function () { location.href = 'settings.html'; });
-
-      // clicking a snapshot selects it and navigates to its hash (acts as separate page)
-      const snapshotList = document.getElementById('snapshotList');
-      if (snapshotList) {
-        snapshotList.addEventListener('click', function (e) {
-          const item = e.target.closest('.snapshot-item');
-          if (!item) return;
-          document.querySelectorAll('.snapshot-item').forEach(i => i.classList.remove('active'));
-          item.classList.add('active');
-          const id = item.getAttribute('data-id') || '';
-          location.hash = id ? ('#snapshot-' + id) : '#';
+      // helper: hide empty system info rows
+      function hideEmptyInfoRows(){
+        const ids = ['osInfo','cpuManufacturer','cpuBrand','cpuCores','totalMemory','diskInfo'];
+        ids.forEach(id=>{
+          const el = document.getElementById(id);
+          if (!el) return;
+          const row = el.closest('.info-row');
+          if (!row) return;
+          const text = (el.textContent||'').trim();
+          const normalized = text.replace(/\s+/g,'');
+          if (!/[A-Za-z0-9]/.test(normalized)) row.style.display = 'none';
+          else row.style.display = 'flex';
         });
       }
 
-      // basic save/reset handlers (no backend)
-      const saveBtn = document.getElementById('saveSettingsBtn');
-      if (saveBtn) saveBtn.addEventListener('click', function () { alert('Settings saved (mock)'); });
+      // Take new snapshot
+      const newBtn = document.getElementById('newSnapshotBtn');
+      if (newBtn) newBtn.addEventListener('click', async () => {
+        const nameInput = document.getElementById('snapshotName');
+        const base = (nameInput && nameInput.value && nameInput.value.trim()) ? nameInput.value.trim() : null;
+        const filename = base || `snapshot_${new Date().toISOString().replace(/[:.]/g,'-')}`;
 
-      const resetBtn = document.getElementById('resetSettingsBtn');
-      if (resetBtn) resetBtn.addEventListener('click', function () {
-        if (confirm('Reset settings to defaults?')) {
-          const appTheme = document.getElementById('appTheme'); if (appTheme) appTheme.value = 'dark';
-          const autoRefresh = document.getElementById('autoRefresh'); if (autoRefresh) autoRefresh.checked = false;
-          const uploadUrl = document.getElementById('uploadUrl'); if (uploadUrl) uploadUrl.value = '';
-          const apiToken = document.getElementById('apiToken'); if (apiToken) apiToken.value = '';
-          alert('Settings reset (mock)');
+        // gather test defaults from UI
+        const tests = {
+          cpu: !!document.getElementById('td_cpu')?.checked,
+          memory: !!document.getElementById('td_memory')?.checked,
+          processes: !!document.getElementById('td_processes')?.checked,
+          network: !!document.getElementById('td_network')?.checked,
+          disk: !!document.getElementById('td_disk')?.checked,
+          users: !!document.getElementById('td_users')?.checked,
+        };
+
+        try {
+          newBtn.disabled = true;
+          newBtn.textContent = 'Taking snapshot...';
+          const result = await ipcRenderer.invoke('take-snapshot', filename, tests);
+          console.log('Snapshot result:', result);
+          window.dispatchEvent(new CustomEvent('snapshot-taken', { detail: result }));
+          alert('Snapshot saved: ' + filename);
+        } catch (err) {
+          console.error('Failed to take snapshot:', err);
+          alert('Failed to take snapshot: ' + (err.message || err));
+        } finally {
+          newBtn.disabled = false;
+          newBtn.textContent = 'Take New Snapshot';
+          // refresh snapshot list if renderer listens to this event
+          window.dispatchEvent(new Event('snapshot-taken'));
         }
       });
-    });
-  </script>
+
+      // Handle settings save event emitted earlier in page
+      window.addEventListener('app-save-settings', async (ev) => {
+        const s = ev.detail || {};
+        try {
+          if (typeof s.maxSnapshots === 'number') await ipcRenderer.invoke('set-max-snapshots', s.maxSnapshots);
+          if (s.testDefaults) await ipcRenderer.invoke('set-test-defaults', s.testDefaults);
+          if (s.autoSnapshotEnabled) {
+            await ipcRenderer.invoke('set-auto-snapshot-interval', s.autoSnapshotMinutes || 5);
+            await ipcRenderer.invoke('start-auto-snapshot', s.autoSnapshotMinutes || 5);
+          } else {
+            await ipcRenderer.invoke('stop-auto-snapshot');
+          }
+          // notify UI
+          console.log('Settings saved', s);
+        } catch (err) {
+          console.error('Failed to save settings:', err);
+        }
+      });
+
+      // Data folder buttons
+      document.addEventListener('click', async (e)=>{
+        if (!e.target) return;
+        if (e.target.id === 'openDataFolderBtn') {
+          await ipcRenderer.invoke('open-data-folder');
+        }
+        if (e.target.id === 'moveDataFolderBtn') {
+          const res = await ipcRenderer.invoke('move-data-folder');
+          if (res && res.success && res.path) document.getElementById('dataFolderPath').textContent = res.path;
+        }
+        if (e.target.id === 'resetDataFolderBtn') {
+          const res = await ipcRenderer.invoke('reset-data-folder');
+          if (res && res.path) document.getElementById('dataFolderPath').textContent = res.path;
+        }
+      });
+
+      // Snapshot list + detail rendering
+      let currentSnapshotName = null;
+
+      async function refreshSnapshotList(){
+        try{
+          const list = await ipcRenderer.invoke('list-snapshots');
+          const container = document.getElementById('snapshotList');
+          const compareSelect = document.getElementById('compareSelect');
+          if (!container) return;
+          container.innerHTML = '';
+
+          if (!list || list.length === 0){
+            container.innerHTML = '<p class="loading">No snapshots</p>';
+            if (compareSelect) compareSelect.innerHTML = '<option value="">Compare with...</option>';
+            return;
+          }
+
+          list.forEach(name => {
+            const d = document.createElement('div');
+            d.className = 'snapshot-item';
+            d.textContent = name;
+            d.dataset.name = name;
+            d.addEventListener('click', ()=> loadAndShowSnapshot(name, d));
+            container.appendChild(d);
+          });
+
+          // populate compare select
+          if (compareSelect){
+            compareSelect.innerHTML = '<option value="">Compare with...</option>' + list.map(n=>`<option value="${n}">${n}</option>`).join('');
+          }
+        }catch(e){
+          console.error('Failed to list snapshots', e);
+        }
+      }
+
+      async function loadAndShowSnapshot(name, element){
+        try{
+          const data = await ipcRenderer.invoke('load-snapshot', name);
+          if (!data) { alert('Failed to load: ' + name); return; }
+
+          currentSnapshotName = name;
+
+          // hide any open comparison view when switching snapshots
+          const comp = document.getElementById('comparisonView');
+          if (comp) comp.style.display = 'none';
+
+          // Hide sections that have no data in this snapshot
+          (function hideEmptySections(){
+            const sys = document.querySelector('.system-info');
+            const net = document.querySelector('.network-section');
+            const fs = document.querySelector('.filesystem-section');
+            const procs = document.querySelector('.processes-section');
+
+            // system: check for any meaningful keys
+            const hasSystem = !!(data.system && Object.keys(data.system || {}).length);
+            if (sys) sys.style.display = hasSystem ? 'flex' : 'none';
+
+            // network: interfaces or listening_ports
+            const hasNetwork = !!(data.network && ((data.network.interfaces && data.network.interfaces.length) || (data.network.listening_ports && data.network.listening_ports.length)));
+            if (net) net.style.display = hasNetwork ? 'flex' : 'none';
+
+            // filesystem: filesystem_info
+            const hasFs = !!(data.system && data.system.filesystem_info && data.system.filesystem_info.length);
+            if (fs) fs.style.display = hasFs ? 'flex' : 'none';
+
+            // processes: running_processes
+            const hasProcs = !!(data.running_processes && data.running_processes.length);
+            if (procs) procs.style.display = hasProcs ? 'flex' : 'none';
+          })();
+
+          // mark active item
+          document.querySelectorAll('.snapshot-item').forEach(el=>el.classList.remove('active'));
+          if (element) element.classList.add('active');
+
+          // Show detail pane
+          document.getElementById('emptyState').style.display = 'none';
+          document.getElementById('settingsPage').style.display = 'none';
+          document.getElementById('snapshotDetail').style.display = 'block';
+
+          // Populate header info
+          document.getElementById('detailTimestamp').textContent = data.metadata?.timestamp || data.metadata?.signed_at || '-';
+          const integrityEl = document.getElementById('integrityInfo');
+          integrityEl.textContent = data.integrity ? `SHA256: ${data.integrity.sha256_checksum}` : 'No integrity info';
+
+          // System info
+          document.getElementById('osInfo').textContent = `${data.system?.os_distro || data.system?.os_platform || '-'} ${data.system?.os_release || ''}`;
+          document.getElementById('cpuManufacturer').textContent = data.system?.cpu_manufacturer || '-';
+          document.getElementById('cpuBrand').textContent = data.system?.cpu_brand || '-';
+          document.getElementById('cpuCores').textContent = data.system?.cpu_cores ?? '-';
+          document.getElementById('totalMemory').textContent = (data.system?.total_memory_gb ? data.system.total_memory_gb + ' GB' : '-');
+          document.getElementById('diskInfo').textContent = (data.system?.total_disk_size_gb ? data.system.total_disk_size_gb + ' GB' : '-');
+
+          // hide any empty system info rows (labels + values)
+          hideEmptyInfoRows();
+
+          // Network interfaces
+          const ni = document.getElementById('networkInterfaces');
+          ni.innerHTML = '';
+          (data.network?.interfaces || []).forEach(iface=>{
+            const el = document.createElement('div'); el.className='detail-item';
+            el.textContent = `${iface.iface} • ${iface.ip4 || iface.ip6 || 'no-ip'}`;
+            ni.appendChild(el);
+          });
+
+          // Listening ports
+          const lp = document.getElementById('listeningPorts'); lp.innerHTML='';
+          (data.network?.listening_ports || []).forEach(p=>{ const el=document.createElement('div'); el.className='detail-item'; el.textContent = `${p.protocol} ${p.local_address}:${p.local_port} (${p.process_name || 'unknown'})`; lp.appendChild(el); });
+
+          // Filesystem
+          const fsEl = document.getElementById('filesystemInfo'); fsEl.innerHTML='';
+          (data.system?.filesystem_info || []).forEach(f=>{ const el=document.createElement('div'); el.className='detail-item'; el.textContent = `${f.mount} — ${f.size_gb} GB (${f.use_percent}% used)`; fsEl.appendChild(el); });
+
+          // Processes list
+          const pList = document.getElementById('processList'); pList.innerHTML='';
+          (data.running_processes || []).forEach(p=>{
+            const row = document.createElement('div'); row.className='process-item';
+            row.innerHTML = `<div class="process-name">${p.name}</div><div class="process-pid">${p.pid}</div><div class="process-stats">CPU ${p.cpu_usage}% • MEM ${p.mem_usage}%</div>`;
+            pList.appendChild(row);
+          });
+
+          // wire header buttons
+          const deleteBtn = document.getElementById('deleteBtn');
+          if (deleteBtn) deleteBtn.onclick = async ()=>{
+            if (!confirm('Delete snapshot '+name+'?')) return;
+            const ok = await ipcRenderer.invoke('delete-snapshot', name);
+            if (ok) { alert('Deleted'); refreshSnapshotList(); document.getElementById('snapshotDetail').style.display='none'; document.getElementById('emptyState').style.display='block'; }
+            else alert('Failed to delete');
+          };
+
+          const uploadBtn = document.getElementById('uploadBtn');
+          if (uploadBtn) uploadBtn.onclick = async ()=>{
+            uploadBtn.disabled = true;
+            const res = await ipcRenderer.invoke('upload-snapshot', name);
+            uploadBtn.disabled = false;
+            if (res.success) alert('Uploaded (id: '+(res.id||'n/a')+')'); else alert('Upload failed: '+(res.error||'unknown'));
+          };
+
+          const compareBtn = document.getElementById('compareBtn');
+          if (compareBtn) compareBtn.onclick = async ()=>{
+            const compareWith = document.getElementById('compareSelect').value;
+            if (!compareWith) { alert('Choose a snapshot to compare with'); return; }
+            const res = await ipcRenderer.invoke('compare-snapshots', name, compareWith);
+            if (!res) { alert('Comparison failed'); return; }
+            // show comparison view and populate minimal info
+            document.getElementById('comparisonView').style.display = 'block';
+            const newProcs = document.getElementById('newProcessesList'); newProcs.innerHTML=''; (res.new_processes||[]).forEach(p=>{ const el=document.createElement('div'); el.className='comparison-item'; el.textContent = p.name; newProcs.appendChild(el); });
+            const rem = document.getElementById('removedProcessesList'); rem.innerHTML=''; (res.removed_processes||[]).forEach(p=>{ const el=document.createElement('div'); el.className='comparison-item danger'; el.textContent = p.name; rem.appendChild(el); });
+            const changes = document.getElementById('processChangesList'); changes.innerHTML=''; (res.process_changes||[]).forEach(p=>{ const el=document.createElement('div'); el.className='comparison-item warning'; el.textContent = `${p.name} CPU ${p.cpu_before}%→${p.cpu_after}% MEM ${p.mem_before}%→${p.mem_after}%`; changes.appendChild(el); });
+            const ports = document.getElementById('newPortsList'); ports.innerHTML=''; (res.new_listening_ports||[]).forEach(p=>{ const el=document.createElement('div'); el.className='comparison-item'; el.textContent = `${p.local_address}:${p.local_port}`; ports.appendChild(el); });
+          };
+
+          // close button for comparison view
+          const comparisonCloseBtn = document.getElementById('comparisonCloseBtn');
+          if (comparisonCloseBtn) comparisonCloseBtn.addEventListener('click', ()=>{
+            const cv = document.getElementById('comparisonView'); if (cv) cv.style.display = 'none';
+          });
+
+        }catch(e){
+          console.error('Failed to load snapshot', e);
+        }
+      }
+
+      // helper: update auto-snapshot status text
+      function updateAutoSnapshotStatus(enabled){
+        const txt = enabled ? 'Auto-snapshots: On' : 'Auto-snapshots: Off';
+        const s = document.getElementById('autoSnapshotStatus');
+        const sum = document.getElementById('autoSnapshotSummary');
+        if (s) s.textContent = txt;
+        if (sum) sum.textContent = txt;
+      }
+
+      // show/hide settings page
+      function showSettings(){
+        const settings = document.getElementById('settingsPage');
+        const detail = document.getElementById('snapshotDetail');
+        const empty = document.getElementById('emptyState');
+        if (settings) settings.style.display = 'block';
+        if (detail) detail.style.display = 'none';
+        if (empty) empty.style.display = 'none';
+        // sync status
+        const enabled = !!document.getElementById('autoSnapshotToggleTop')?.checked;
+        updateAutoSnapshotStatus(enabled);
+
+        // Refresh and display data-folder path from main process
+        (async () => {
+          try {
+            const path = await ipcRenderer.invoke('get-data-folder');
+            if (path && document.getElementById('dataFolderPath')) {
+              document.getElementById('dataFolderPath').textContent = path;
+            }
+          } catch (err) {
+            console.warn('get-data-folder failed', err);
+          }
+        })();
+      }
+
+      function hideSettings(){
+        const settings = document.getElementById('settingsPage');
+        const empty = document.getElementById('emptyState');
+        if (settings) settings.style.display = 'none';
+        if (empty) empty.style.display = 'block';
+      }
+
+      // wire header settings button
+      const settingsBtn = document.getElementById('settingsBtn');
+      if (settingsBtn) settingsBtn.addEventListener('click', ()=> showSettings());
+
+      // wire back button in settings header
+      const backBtn = document.getElementById('backToSnapshotsBtn');
+      if (backBtn) backBtn.addEventListener('click', ()=> hideSettings());
+
+      // refresh on snapshot-taken events
+      window.addEventListener('snapshot-taken', ()=> refreshSnapshotList());
+
+      // call refresh initially after init
+      try { refreshSnapshotList(); } catch (e) { /*ignore*/ }
+      })();
+    </script>
+
 </body>
 
 </html>
