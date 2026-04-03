@@ -6,6 +6,8 @@ const { execFile } = require('child_process');
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const https = require('https');
 const http = require('http');
+const { execSync } = require('child_process');
+const os = require('os');
 const HARDCODED_SNAPSHOT_SERVER_URL = 'https://instasnapshot.vercel.app';
 const HARDCODED_SNAPSHOT_API_KEY = 'EVERLIJvivjSNFSVUFDshgognSGAGFOurgergAGBUeraogferogVbneRAOBO';
 
@@ -1418,6 +1420,225 @@ ipcMain.handle('reset-data-folder', async () => {
   customSnapshotDir = null;
   saveSettings();
   return { success: true, path: app.getPath('userData') };
+});
+
+// --- App Installation Checker ---
+
+/**
+ * Checks whether a specific application appears to be installed on this system.
+ * Works cross-platform: Windows (win32), macOS (darwin), Linux.
+ *
+ * @param {string} appName  - Human-readable name of the app (e.g. "Slack")
+ * @param {object} hints    - Optional hints to improve detection accuracy:
+ *   hints.executableNames    {string[]}  Executable names to probe with which/where
+ *   hints.macBundleId        {string}    macOS bundle ID (e.g. "com.tinyspeck.slackmacgap")
+ *   hints.macAppName         {string}    .app bundle name (e.g. "Slack.app")
+ *   hints.windowsBundleId    {string}    Registry display name substring to search
+ *   hints.linuxPackageNames  {string[]}  Package names for dpkg/rpm/pacman
+ *   hints.installPaths       {string[]}  Explicit filesystem paths to check (supports ~)
+ *
+ * @returns {Promise<object>} { app_name, installed, confidence, signals_found,
+ *                              signals_checked, found_paths, signals, platform, checked_at }
+ */
+async function checkAppInstalled(appName, hints = {}) {
+  const platform = os.platform(); // 'win32' | 'darwin' | 'linux'
+  const signals = [];
+  const foundPaths = [];
+  let installedSignals = 0;
+  let totalSignals = 0;
+
+  function safeExec(cmd, opts = {}) {
+    try {
+      return execSync(cmd, {
+        timeout: 6000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        ...opts,
+      }).toString().trim();
+    } catch {
+      return null;
+    }
+  }
+
+  function pathExists(p) {
+    try { return fs.existsSync(p); } catch { return false; }
+  }
+
+  function record(signal) {
+    signals.push(signal);
+    totalSignals++;
+    if (signal.found) {
+      installedSignals++;
+      if (signal.path) foundPaths.push(signal.path);
+    }
+  }
+
+  // ── 1. Explicit install paths (all platforms) ──────────────────────────────
+  for (const rawPath of (hints.installPaths || [])) {
+    const p = rawPath.replace(/^~/, os.homedir());
+    record({ type: 'explicit_path', found: pathExists(p), path: p });
+  }
+
+  // ── 2. Executable on PATH (all platforms) ──────────────────────────────────
+  const whichCmd = platform === 'win32' ? 'where' : 'which';
+  const execNames = hints.executableNames || [appName.toLowerCase()];
+  for (const exe of execNames) {
+    const result = safeExec(`${whichCmd} ${exe}`);
+    const resolved = result ? result.split('\n')[0] : null;
+    record({ type: 'executable_on_path', found: !!resolved, executable: exe, path: resolved });
+  }
+
+  // ── 3. macOS-specific checks ───────────────────────────────────────────────
+  if (platform === 'darwin') {
+    const macAppName = hints.macAppName || `${appName}.app`;
+
+    // /Applications and ~/Applications
+    for (const base of ['/Applications', path.join(os.homedir(), 'Applications')]) {
+      const ap = path.join(base, macAppName);
+      record({ type: 'macos_app_bundle', found: pathExists(ap), path: ap });
+    }
+
+    // Spotlight lookup by bundle ID
+    if (hints.macBundleId) {
+      const found = safeExec(`mdfind "kMDItemCFBundleIdentifier == '${hints.macBundleId}'"`)
+        ?.split('\n')[0] || null;
+      record({ type: 'macos_bundle_id', found: !!found, bundleId: hints.macBundleId, path: found });
+    }
+
+    // Spotlight lookup by display name
+    const byName = safeExec(
+      `mdfind "kMDItemKind == 'Application' && kMDItemDisplayName == '${appName}'"`,
+    )?.split('\n')[0] || null;
+    record({ type: 'macos_spotlight_name', found: !!byName, path: byName });
+  }
+
+  // ── 4. Windows-specific checks ─────────────────────────────────────────────
+  if (platform === 'win32') {
+    const searchTerm = hints.windowsBundleId || appName;
+
+    // Registry uninstall keys (system-wide, WOW64, and per-user)
+    const regKeys = [
+      'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+      'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+      'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+    ];
+    for (const key of regKeys) {
+      const out = safeExec(`reg query "${key}" /s /f "${searchTerm}" /d`);
+      record({ type: 'windows_registry', found: !!(out && out.includes(searchTerm)), key });
+    }
+
+    // Common install directories
+    const bases = [
+      process.env['ProgramFiles']        || 'C:\\Program Files',
+      process.env['ProgramFiles(x86)']   || 'C:\\Program Files (x86)',
+      process.env['LOCALAPPDATA']        || path.join(os.homedir(), 'AppData', 'Local'),
+    ];
+    for (const base of bases) {
+      const p = path.join(base, appName);
+      record({ type: 'windows_install_dir', found: pathExists(p), path: p });
+    }
+
+    // MSIX / UWP via PowerShell Get-AppxPackage
+    const psOut = safeExec(
+      `powershell -NoProfile -Command "Get-AppxPackage *${appName}* | ` +
+      `Select-Object -First 1 -ExpandProperty Name"`,
+      { timeout: 12000 },
+    );
+    record({ type: 'windows_appx_package', found: !!psOut, packageName: psOut });
+  }
+
+  // ── 5. Linux-specific checks ───────────────────────────────────────────────
+  if (platform === 'linux') {
+    const pkgNames = hints.linuxPackageNames || [appName.toLowerCase()];
+
+    for (const pkg of pkgNames) {
+      // dpkg (Debian/Ubuntu)
+      const dpkg = safeExec(`dpkg -s ${pkg} 2>/dev/null | grep -E "^Status:"`);
+      if (dpkg?.includes('installed')) {
+        record({ type: 'linux_dpkg', found: true, package: pkg });
+        continue;
+      }
+      // rpm (Fedora/RHEL/openSUSE)
+      const rpm = safeExec(`rpm -q ${pkg} 2>/dev/null`);
+      if (rpm && !rpm.includes('not installed')) {
+        record({ type: 'linux_rpm', found: true, package: pkg });
+        continue;
+      }
+      // pacman (Arch)
+      const pacman = safeExec(`pacman -Qi ${pkg} 2>/dev/null`);
+      if (pacman) {
+        record({ type: 'linux_pacman', found: true, package: pkg });
+        continue;
+      }
+      record({ type: 'linux_package_manager', found: false, package: pkg });
+    }
+
+    // Common binary/install locations
+    const lcName = appName.toLowerCase();
+    for (const p of [
+      `/usr/bin/${lcName}`,
+      `/usr/local/bin/${lcName}`,
+      `/opt/${lcName}`,
+      `/opt/${appName}`,
+      `/snap/bin/${lcName}`,
+    ]) {
+      record({ type: 'linux_install_path', found: pathExists(p), path: p });
+    }
+
+    // Flatpak
+    const flatpak = safeExec(`flatpak list --app --columns=application 2>/dev/null | grep -i "${lcName}"`);
+    record({ type: 'linux_flatpak', found: !!flatpak, match: flatpak?.split('\n')[0] || null });
+
+    // Snap
+    const snap = safeExec(`snap list 2>/dev/null | grep -i "${lcName}"`);
+    record({ type: 'linux_snap', found: !!snap, match: snap?.split('\n')[0] || null });
+  }
+
+  // ── 6. Determine overall verdict and confidence ───────────────────────────
+  const installed = installedSignals > 0;
+  let confidence;
+  if (installedSignals === 0) {
+    confidence = 'none';        // No evidence of installation
+  } else if (installedSignals >= 2) {
+    confidence = 'high';        // Multiple independent signals agree
+  } else {
+    confidence = 'low';         // Only one signal found — possible but uncertain
+  }
+
+  return {
+    app_name: appName,
+    installed,
+    confidence,          // 'high' | 'low' | 'none'
+    signals_found: installedSignals,
+    signals_checked: totalSignals,
+    found_paths: [...new Set(foundPaths)],
+    signals,             // Full signal-by-signal breakdown
+    platform,
+    checked_at: new Date().toISOString(),
+  };
+}
+
+// IPC: Check a single app
+// Usage: ipcRenderer.invoke('check-app-installed', 'Slack', { macBundleId: 'com.tinyspeck.slackmacgap' })
+ipcMain.handle('check-app-installed', async (event, appName, hints) => {
+  try {
+    return await checkAppInstalled(appName, hints || {});
+  } catch (e) {
+    console.error('Error checking app installation:', e);
+    return { app_name: appName, installed: false, confidence: 'none', error: e.message };
+  }
+});
+
+// IPC: Check multiple apps in parallel
+// Usage: ipcRenderer.invoke('check-apps-installed', [{ name: 'Slack', hints: {} }, { name: 'Zoom' }])
+ipcMain.handle('check-apps-installed', async (event, apps) => {
+  try {
+    return await Promise.all(
+      (apps || []).map(({ name, hints }) => checkAppInstalled(name, hints || {}))
+    );
+  } catch (e) {
+    console.error('Error checking apps installation:', e);
+    return [];
+  }
 });
 
 // 3. Run the app and test our function
