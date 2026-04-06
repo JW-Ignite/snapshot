@@ -1440,27 +1440,38 @@ ipcMain.handle('reset-data-folder', async () => {
  * @returns {Promise<object>} { app_name, installed, confidence, signals_found,
  *                              signals_checked, found_paths, signals, platform, checked_at }
  */
-async // --- App Installation Checker ---
+// --- App Installation Checker ---
 async function checkAppInstalled(appName) {
   const platform = os.platform();
   const lcName = appName.toLowerCase();
   const signals = [];
+  const foundPaths = new Set();
 
-  function safeExec(cmd) {
-    try { return execSync(cmd, { timeout: 5000, stdio: ['pipe','pipe','pipe'] }).toString().trim(); }
+  function safeExec(cmd, options = {}) {
+    try { return execSync(cmd, { timeout: options.timeout ?? 5000, stdio: ['pipe','pipe','pipe'] }).toString().trim(); }
     catch { return null; }
   }
 
   // Executable on PATH (works everywhere)
   const whichCmd = platform === 'win32' ? 'where' : 'which';
   const onPath = safeExec(`${whichCmd} ${lcName}`);
-  if (onPath) signals.push(`Found on PATH: ${onPath.split('\n')[0]}`);
+  if (onPath) {
+    const pathHit = onPath.split(/\r?\n/)[0].trim();
+    signals.push(`Found on PATH: ${pathHit}`);
+    if (pathHit) foundPaths.add(pathHit);
+  }
 
   if (platform === 'darwin') {
     const appBundle = `/Applications/${appName}.app`;
-    if (fs.existsSync(appBundle)) signals.push(`App bundle: ${appBundle}`);
+    if (fs.existsSync(appBundle)) {
+      signals.push(`App bundle: ${appBundle}`);
+      foundPaths.add(appBundle);
+    }
     const spotlight = safeExec(`mdfind "kMDItemKind == 'Application' && kMDItemDisplayName == '${appName}'"`)?.split('\n')[0];
-    if (spotlight) signals.push(`Spotlight: ${spotlight}`);
+    if (spotlight) {
+      signals.push(`Spotlight: ${spotlight}`);
+      foundPaths.add(spotlight.trim());
+    }
 
   } else if (platform === 'win32') {
     const regKeys = [
@@ -1472,8 +1483,12 @@ async function checkAppInstalled(appName) {
       const hit = safeExec(`reg query "${key}" /s /f "${appName}" /d`);
       if (hit?.includes(appName)) { signals.push(`Registry: ${key}`); break; }
     }
-    const appx = safeExec(`powershell -NoProfile -Command "Get-AppxPackage *${appName}* | Select-Object -First 1 -ExpandProperty Name"`, { timeout: 10000 });
-    if (appx) signals.push(`AppX package: ${appx}`);
+    const appx = safeExec(`powershell -NoProfile -Command "Get-AppxPackage *${appName}* | Select-Object -First 1 -ExpandProperty InstallLocation"`, { timeout: 10000 });
+    if (appx) {
+      const appxLocation = appx.split(/\r?\n/)[0].trim();
+      signals.push(`AppX location: ${appxLocation}`);
+      if (appxLocation) foundPaths.add(appxLocation);
+    }
 
   } else {
     // Linux: try common package managers
@@ -1491,6 +1506,7 @@ async function checkAppInstalled(appName) {
     app_name: appName,
     installed: signals.length > 0,
     signals, // what specifically was found
+    found_paths: Array.from(foundPaths),
     platform,
   };
 }
@@ -1500,7 +1516,7 @@ ipcMain.handle('check-app-installed', async (event, appName) => {
     return await checkAppInstalled(appName);
   } catch (e) {
     console.error('Error checking app:', e);
-    return { app_name: appName, installed: false, signals: [], error: e.message };
+    return { app_name: appName, installed: false, signals: [], found_paths: [], error: e.message };
   }
 });
 
