@@ -25,15 +25,54 @@ interface Port {
   local_address?: string;
 }
 
+interface ApplicationChange {
+  name: string;
+  source?: string;
+}
+
+interface StartupChange {
+  name: string;
+  scope: string;
+}
+
+interface FilesystemChange {
+  path: string;
+  name: string;
+  scope: string;
+  type: string;
+  hash_changed?: boolean;
+  size_changed?: boolean;
+  mtime_changed?: boolean;
+}
+
+interface Concern {
+  severity: 'high' | 'medium' | 'low';
+  title: string;
+  detail?: string;
+}
+
 interface ComparisonResult {
   baseline_timestamp: string;
   after_timestamp: string;
   time_diff_minutes: number;
   new_processes: Process[];
   removed_processes: Process[];
+  new_applications?: ApplicationChange[];
+  removed_applications?: ApplicationChange[];
+  new_startup_items?: StartupChange[];
+  removed_startup_items?: StartupChange[];
+  new_filesystem_items?: FilesystemChange[];
+  removed_filesystem_items?: FilesystemChange[];
+  modified_filesystem_items?: FilesystemChange[];
+  recent_added_files?: FilesystemChange[];
   process_changes: ProcessChange[];
   memory_change_gb: string;
   new_listening_ports: Port[];
+  concerns?: Concern[];
+  concern_summary?: {
+    level: 'high' | 'medium' | 'low';
+    text: string;
+  };
 }
 
 interface SnapshotDiffProps {
@@ -46,6 +85,17 @@ export function SnapshotDiff({ comparison, baselineName, afterName }: SnapshotDi
   const memoryChange = parseFloat(comparison.memory_change_gb);
   const memoryChangeColor = memoryChange > 0 ? 'text-red-300' : memoryChange < 0 ? 'text-emerald-300' : 'text-zinc-400';
   const memoryChangeSign = memoryChange > 0 ? '+' : '';
+  const concernLevel = comparison.concern_summary?.level || 'low';
+  const concernColor = concernLevel === 'high'
+    ? 'text-red-300'
+    : concernLevel === 'medium'
+      ? 'text-amber-300'
+      : 'text-emerald-300';
+  const newApplications = comparison.new_applications || [];
+  const newStartupItems = comparison.new_startup_items || [];
+  const recentAddedFiles = comparison.recent_added_files || [];
+  const modifiedFilesystemItems = comparison.modified_filesystem_items || [];
+  const concerns = comparison.concerns || [];
 
   return (
     <div className="space-y-6">
@@ -73,6 +123,10 @@ export function SnapshotDiff({ comparison, baselineName, afterName }: SnapshotDi
       {/* Summary Stats */}
       <div className="app-stat-grid cols-4">
         <div className="app-card app-card-inner">
+          <div className="app-kicker">Risk</div>
+          <div className={`text-2xl font-semibold ${concernColor}`}>{concernLevel.toUpperCase()}</div>
+        </div>
+        <div className="app-card app-card-inner">
           <div className="app-kicker">New Processes</div>
           <div className="text-2xl font-semibold text-amber-300">{comparison.new_processes.length}</div>
         </div>
@@ -90,10 +144,136 @@ export function SnapshotDiff({ comparison, baselineName, afterName }: SnapshotDi
             {memoryChangeSign}{comparison.memory_change_gb} GB
           </div>
         </div>
+        <div className="app-card app-card-inner">
+          <div className="app-kicker">New Apps</div>
+          <div className="text-2xl font-semibold text-rose-300">{newApplications.length}</div>
+        </div>
+        <div className="app-card app-card-inner">
+          <div className="app-kicker">Startup Items</div>
+          <div className="text-2xl font-semibold text-orange-300">{newStartupItems.length}</div>
+        </div>
+        <div className="app-card app-card-inner">
+          <div className="app-kicker">Recent Added Files</div>
+          <div className="text-2xl font-semibold text-fuchsia-300">{recentAddedFiles.length}</div>
+        </div>
       </div>
+
+      {comparison.concern_summary && (
+        <div className="app-card app-card-inner">
+          <div className="app-kicker mb-2">Concern Summary</div>
+          <div className={`font-medium ${concernColor}`}>{comparison.concern_summary.text}</div>
+        </div>
+      )}
 
       {/* Detailed Sections */}
       <div className="grid md:grid-cols-2 gap-6">
+        {/* Recently Added Files */}
+        <div className="app-card overflow-hidden">
+          <div className="border-b border-[var(--border)] bg-white/5 px-4 py-3">
+            <h4 className="font-semibold text-fuchsia-300">
+              Recently Added Files ({recentAddedFiles.length})
+            </h4>
+          </div>
+          <div className="max-h-60 overflow-y-auto">
+            {recentAddedFiles.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-zinc-500">No recent file additions</div>
+            ) : (
+              recentAddedFiles.slice(0, 20).map((item, i) => (
+                <div key={i} className="border-b border-[var(--border)] px-4 py-3 text-sm last:border-b-0">
+                  <div className="font-medium text-zinc-100">{item.name}</div>
+                  <div className="mt-1 text-xs text-zinc-500">{item.scope} · {item.path}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* New Applications */}
+        <div className="app-card overflow-hidden">
+          <div className="border-b border-[var(--border)] bg-white/5 px-4 py-3">
+            <h4 className="font-semibold text-rose-300">
+              New Applications ({newApplications.length})
+            </h4>
+          </div>
+          <div className="max-h-60 overflow-y-auto">
+            {newApplications.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-zinc-500">No new applications</div>
+            ) : (
+              newApplications.slice(0, 20).map((app, i) => (
+                <div key={i} className="border-b border-[var(--border)] px-4 py-3 text-sm last:border-b-0">
+                  <div className="font-medium text-zinc-100">{app.name}</div>
+                  <div className="mt-1 text-xs text-zinc-500">{app.source || 'unknown source'}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Startup Items */}
+        <div className="app-card overflow-hidden">
+          <div className="border-b border-[var(--border)] bg-white/5 px-4 py-3">
+            <h4 className="font-semibold text-orange-300">
+              New Startup Items ({newStartupItems.length})
+            </h4>
+          </div>
+          <div className="max-h-60 overflow-y-auto">
+            {newStartupItems.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-zinc-500">No new startup items</div>
+            ) : (
+              newStartupItems.slice(0, 20).map((item, i) => (
+                <div key={i} className="border-b border-[var(--border)] px-4 py-3 text-sm last:border-b-0">
+                  <div className="font-medium text-zinc-100">{item.name}</div>
+                  <div className="mt-1 text-xs text-zinc-500">{item.scope}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* File Modifications */}
+        <div className="app-card overflow-hidden">
+          <div className="border-b border-[var(--border)] bg-white/5 px-4 py-3">
+            <h4 className="font-semibold text-violet-300">
+              Modified Files ({modifiedFilesystemItems.length})
+            </h4>
+          </div>
+          <div className="max-h-60 overflow-y-auto">
+            {modifiedFilesystemItems.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-zinc-500">No modified files</div>
+            ) : (
+              modifiedFilesystemItems.slice(0, 20).map((item, i) => (
+                <div key={i} className="border-b border-[var(--border)] px-4 py-3 text-sm last:border-b-0">
+                  <div className="font-medium text-zinc-100">{item.name}</div>
+                  <div className="mt-1 text-xs text-zinc-500">{item.scope} · {item.path}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Concerns */}
+        <div className="app-card overflow-hidden md:col-span-2">
+          <div className="border-b border-[var(--border)] bg-white/5 px-4 py-3">
+            <h4 className="font-semibold text-zinc-100">
+              Concerns ({concerns.length})
+            </h4>
+          </div>
+          <div className="max-h-60 overflow-y-auto">
+            {concerns.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-zinc-500">No major concerns detected</div>
+            ) : (
+              concerns.slice(0, 30).map((concern, i) => (
+                <div key={i} className="border-b border-[var(--border)] px-4 py-3 text-sm last:border-b-0">
+                  <div className={`font-medium ${concern.severity === 'high' ? 'text-red-300' : concern.severity === 'medium' ? 'text-amber-300' : 'text-emerald-300'}`}>
+                    {concern.title}
+                  </div>
+                  {concern.detail && <div className="mt-1 text-xs text-zinc-500">{concern.detail}</div>}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
         {/* New Processes */}
         <div className="app-card overflow-hidden">
           <div className="border-b border-[var(--border)] bg-white/5 px-4 py-3">
