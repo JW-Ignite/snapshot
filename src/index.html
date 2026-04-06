@@ -870,6 +870,10 @@ section h3::after {
           <div id="comparisonView" class="comparison-view" style="display: none; position:relative;">
             <button id="comparisonCloseBtn" class="btn" style="position:absolute; right:12px; top:12px; padding:6px 8px;">✕</button>
             <h3>Comparison Results</h3>
+            <div class="comparison-actions">
+              <div id="comparisonSummaryText" class="comparison-summary-text">Run a comparison to see changes and concerns.</div>
+              <button id="generateReportBtn" class="btn">Generate PDF Report</button>
+            </div>
             <div class="comparison-grid">
               <div class="comparison-card">
                 <h4>New Processes</h4>
@@ -886,6 +890,24 @@ section h3::after {
               <div class="comparison-card">
                 <h4>New Listening Ports</h4>
                 <div id="newPortsList" class="comparison-list"></div>
+              </div>
+              <div class="comparison-card">
+                <h4>New Applications</h4>
+                <div id="newApplicationsList" class="comparison-list"></div>
+              </div>
+              <div class="comparison-card">
+                <h4>Startup Items</h4>
+                <div id="newStartupItemsList" class="comparison-list"></div>
+              </div>
+              <div class="comparison-card">
+                <h4>File Changes</h4>
+                <div id="newFilesystemItemsList" class="comparison-list"></div>
+                <div id="modifiedFilesystemItemsList" class="comparison-list" style="margin-top:8px;"></div>
+                <div id="removedFilesystemItemsList" class="comparison-list" style="margin-top:8px;"></div>
+              </div>
+              <div class="comparison-card">
+                <h4>Concerns</h4>
+                <div id="comparisonConcernsList" class="comparison-list"></div>
               </div>
             </div>
           </div>
@@ -1034,6 +1056,9 @@ section h3::after {
                     <label style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;"><input type="checkbox" id="td_network" checked> Network</label>
                     <label style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;"><input type="checkbox" id="td_disk" checked> Disk &amp; FS</label>
                     <label style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;"><input type="checkbox" id="td_users" checked> Users</label>
+                    <label style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;"><input type="checkbox" id="td_software" checked> Installed Apps</label>
+                    <label style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;"><input type="checkbox" id="td_startup" checked> Startup Items</label>
+                    <label style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;"><input type="checkbox" id="td_filesystem" checked> File Changes</label>
                   </div>
                 </div>
 
@@ -1110,6 +1135,9 @@ section h3::after {
           network: !!document.getElementById('td_network')?.checked,
           disk: !!document.getElementById('td_disk')?.checked,
           users: !!document.getElementById('td_users')?.checked,
+          software: !!document.getElementById('td_software')?.checked,
+          startup: !!document.getElementById('td_startup')?.checked,
+          filesystem: !!document.getElementById('td_filesystem')?.checked,
         };
 
         try {
@@ -1149,6 +1177,27 @@ section h3::after {
         }
       });
 
+      const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+      if (saveSettingsBtn) saveSettingsBtn.addEventListener('click', () => {
+        const autoSnapshotToggle = document.getElementById('autoSnapshotToggleTop');
+        const autoSnapshotInterval = document.getElementById('autoSnapshotInterval');
+        const maxSnapshotsInput = document.getElementById('maxSnapshotsInput');
+
+        window.dispatchEvent(new CustomEvent('app-save-settings', {
+          detail: {
+            maxSnapshots: Number(maxSnapshotsInput?.value || 0),
+            testDefaults: collectTestDefaults(),
+            autoSnapshotEnabled: !!autoSnapshotToggle?.checked,
+            autoSnapshotMinutes: Number(autoSnapshotInterval?.value || 5),
+          },
+        }));
+      });
+
+      const cancelSettingsBtn = document.getElementById('cancelSettingsBtn');
+      if (cancelSettingsBtn) cancelSettingsBtn.addEventListener('click', async () => {
+        await refreshSettingsState();
+      });
+
       // Data folder buttons
       document.addEventListener('click', async (e)=>{
         if (!e.target) return;
@@ -1167,6 +1216,7 @@ section h3::after {
 
       // Snapshot list + detail rendering
       let currentSnapshotName = null;
+      let currentComparison = null;
 
       async function refreshSnapshotList(){
         try{
@@ -1210,6 +1260,7 @@ section h3::after {
           // hide any open comparison view when switching snapshots
           const comp = document.getElementById('comparisonView');
           if (comp) comp.style.display = 'none';
+          currentComparison = null;
 
           // Hide sections that have no data in this snapshot
           (function hideEmptySections(){
@@ -1310,10 +1361,49 @@ section h3::after {
             if (!res) { alert('Comparison failed'); return; }
             // show comparison view and populate minimal info
             document.getElementById('comparisonView').style.display = 'block';
+            currentComparison = { baselineName: name, afterName: compareWith };
+            const summaryText = document.getElementById('comparisonSummaryText');
+            if (summaryText) {
+              const risk = res.concern_summary?.level ? res.concern_summary.level.toUpperCase() : 'UNKNOWN';
+              summaryText.textContent = `${res.new_processes?.length || 0} new processes, ${res.removed_processes?.length || 0} removed, ${res.new_applications?.length || 0} new apps, ${res.new_startup_items?.length || 0} startup items, ${res.new_filesystem_items?.length || 0} file adds, risk ${risk}`;
+            }
             const newProcs = document.getElementById('newProcessesList'); newProcs.innerHTML=''; (res.new_processes||[]).forEach(p=>{ const el=document.createElement('div'); el.className='comparison-item'; el.textContent = p.name; newProcs.appendChild(el); });
             const rem = document.getElementById('removedProcessesList'); rem.innerHTML=''; (res.removed_processes||[]).forEach(p=>{ const el=document.createElement('div'); el.className='comparison-item danger'; el.textContent = p.name; rem.appendChild(el); });
             const changes = document.getElementById('processChangesList'); changes.innerHTML=''; (res.process_changes||[]).forEach(p=>{ const el=document.createElement('div'); el.className='comparison-item warning'; el.textContent = `${p.name} CPU ${p.cpu_before}%→${p.cpu_after}% MEM ${p.mem_before}%→${p.mem_after}%`; changes.appendChild(el); });
             const ports = document.getElementById('newPortsList'); ports.innerHTML=''; (res.new_listening_ports||[]).forEach(p=>{ const el=document.createElement('div'); el.className='comparison-item'; el.textContent = `${p.local_address}:${p.local_port}`; ports.appendChild(el); });
+            const apps = document.getElementById('newApplicationsList'); apps.innerHTML=''; (res.new_applications||[]).forEach(item=>{ const el=document.createElement('div'); el.className='comparison-item'; el.textContent = `${item.name}`; apps.appendChild(el); });
+            if ((res.new_applications||[]).length === 0) { const el=document.createElement('div'); el.className='comparison-item'; el.textContent = 'No new applications detected.'; apps.appendChild(el); }
+            const startup = document.getElementById('newStartupItemsList'); startup.innerHTML=''; (res.new_startup_items||[]).forEach(item=>{ const el=document.createElement('div'); el.className='comparison-item danger'; el.textContent = `${item.name} (${item.scope})`; startup.appendChild(el); });
+            if ((res.new_startup_items||[]).length === 0) { const el=document.createElement('div'); el.className='comparison-item'; el.textContent = 'No new startup items detected.'; startup.appendChild(el); }
+            const fsNew = document.getElementById('newFilesystemItemsList'); fsNew.innerHTML=''; (res.new_filesystem_items||[]).forEach(item=>{ const el=document.createElement('div'); el.className='comparison-item'; el.textContent = `${item.name} (${item.scope})`; fsNew.appendChild(el); });
+            if ((res.new_filesystem_items||[]).length === 0) { const el=document.createElement('div'); el.className='comparison-item'; el.textContent = 'No new file changes detected.'; fsNew.appendChild(el); }
+            const fsModified = document.getElementById('modifiedFilesystemItemsList'); fsModified.innerHTML=''; (res.modified_filesystem_items||[]).forEach(item=>{ const el=document.createElement('div'); el.className='comparison-item warning'; el.textContent = `${item.name} (${item.scope})`; fsModified.appendChild(el); });
+            if ((res.modified_filesystem_items||[]).length === 0) { const el=document.createElement('div'); el.className='comparison-item'; el.textContent = 'No modified file changes detected.'; fsModified.appendChild(el); }
+            const fsRemoved = document.getElementById('removedFilesystemItemsList'); fsRemoved.innerHTML=''; (res.removed_filesystem_items||[]).forEach(item=>{ const el=document.createElement('div'); el.className='comparison-item danger'; el.textContent = `${item.name} (${item.scope})`; fsRemoved.appendChild(el); });
+            if ((res.removed_filesystem_items||[]).length === 0) { const el=document.createElement('div'); el.className='comparison-item'; el.textContent = 'No removed file changes detected.'; fsRemoved.appendChild(el); }
+            const concerns = document.getElementById('comparisonConcernsList'); concerns.innerHTML=''; (res.concerns||[]).forEach(item=>{ const el=document.createElement('div'); el.className=`comparison-item ${item.severity === 'high' ? 'danger' : item.severity === 'medium' ? 'warning' : ''}`; el.textContent = `${item.title}${item.detail ? ` • ${item.detail}` : ''}`; concerns.appendChild(el); });
+            if ((res.concerns||[]).length === 0) {
+              const el = document.createElement('div'); el.className = 'comparison-item'; el.textContent = 'No major concerns detected.'; concerns.appendChild(el);
+            }
+          };
+
+          const generateReportBtn = document.getElementById('generateReportBtn');
+          if (generateReportBtn) generateReportBtn.onclick = async ()=>{
+            if (!currentComparison) { alert('Run a comparison first'); return; }
+            generateReportBtn.disabled = true;
+            const originalText = generateReportBtn.textContent;
+            generateReportBtn.textContent = 'Generating...';
+            try {
+              const result = await ipcRenderer.invoke('generate-comparison-report', currentComparison.baselineName, currentComparison.afterName);
+              if (!result || !result.success) {
+                alert('Failed to generate report' + (result?.error ? `: ${result.error}` : ''));
+              }
+            } catch (err) {
+              alert('Failed to generate report: ' + (err.message || err));
+            } finally {
+              generateReportBtn.disabled = false;
+              generateReportBtn.textContent = originalText;
+            }
           };
 
           // close button for comparison view
@@ -1334,6 +1424,65 @@ section h3::after {
         const sum = document.getElementById('autoSnapshotSummary');
         if (s) s.textContent = txt;
         if (sum) sum.textContent = txt;
+      }
+
+      function collectTestDefaults() {
+        return {
+          cpu: !!document.getElementById('td_cpu')?.checked,
+          memory: !!document.getElementById('td_memory')?.checked,
+          processes: !!document.getElementById('td_processes')?.checked,
+          network: !!document.getElementById('td_network')?.checked,
+          disk: !!document.getElementById('td_disk')?.checked,
+          users: !!document.getElementById('td_users')?.checked,
+          software: !!document.getElementById('td_software')?.checked,
+          startup: !!document.getElementById('td_startup')?.checked,
+          filesystem: !!document.getElementById('td_filesystem')?.checked,
+        };
+      }
+
+      function applyTestDefaults(defaults) {
+        if (!defaults) return;
+        const pairs = [
+          ['td_cpu', defaults.cpu],
+          ['td_memory', defaults.memory],
+          ['td_processes', defaults.processes],
+          ['td_network', defaults.network],
+          ['td_disk', defaults.disk],
+          ['td_users', defaults.users],
+          ['td_software', defaults.software],
+          ['td_startup', defaults.startup],
+          ['td_filesystem', defaults.filesystem],
+        ];
+
+        pairs.forEach(([id, value]) => {
+          const el = document.getElementById(id);
+          if (el && typeof value === 'boolean') {
+            el.checked = value;
+          }
+        });
+      }
+
+      async function refreshSettingsState() {
+        try {
+          const [autoSettings, maxSnapshots, testDefaults] = await Promise.all([
+            ipcRenderer.invoke('get-auto-snapshot-settings'),
+            ipcRenderer.invoke('get-max-snapshots'),
+            ipcRenderer.invoke('get-test-defaults'),
+          ]);
+
+          const toggle = document.getElementById('autoSnapshotToggleTop');
+          const interval = document.getElementById('autoSnapshotInterval');
+          const maxSnapshotsInput = document.getElementById('maxSnapshotsInput');
+
+          if (toggle) toggle.checked = !!autoSettings?.enabled;
+          if (interval && typeof autoSettings?.minutes === 'number') interval.value = autoSettings.minutes;
+          if (maxSnapshotsInput && typeof maxSnapshots === 'number') maxSnapshotsInput.value = maxSnapshots;
+
+          applyTestDefaults(testDefaults);
+          updateAutoSnapshotStatus(!!autoSettings?.enabled);
+        } catch (err) {
+          console.warn('Failed to refresh settings state', err);
+        }
       }
 
       function renderAgentStatus(status) {
@@ -1374,9 +1523,7 @@ section h3::after {
         if (settings) settings.style.display = 'block';
         if (detail) detail.style.display = 'none';
         if (empty) empty.style.display = 'none';
-        // sync status
-        const enabled = !!document.getElementById('autoSnapshotToggleTop')?.checked;
-        updateAutoSnapshotStatus(enabled);
+        refreshSettingsState();
 
         (async () => {
           try {

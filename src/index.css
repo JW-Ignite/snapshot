@@ -604,6 +604,22 @@ section h3::after {
   margin-bottom: 16px;
 }
 
+.comparison-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-right: 48px;
+}
+
+.comparison-summary-text {
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .comparison-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
