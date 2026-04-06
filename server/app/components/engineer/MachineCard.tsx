@@ -63,10 +63,10 @@ export function MachineCard({ machine, onClick, isSelected = false }: MachineCar
     <div
       onClick={onClick}
       className={`
-        bg-white rounded-lg p-4 shadow-sm cursor-pointer
+        app-card app-card-inner cursor-pointer
         border-2 transition-all duration-200
-        hover:shadow-md hover:border-indigo-300 hover:scale-[1.02]
-        ${isSelected ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-transparent'}
+        hover:border-white/20 hover:scale-[1.02]
+        ${isSelected ? 'border-white/70 ring-2 ring-white/10' : 'border-transparent'}
       `}
     >
       {/* Header */}
@@ -74,10 +74,10 @@ export function MachineCard({ machine, onClick, isSelected = false }: MachineCar
         <div className="flex items-center gap-2">
           <span className="text-2xl">{machineTypeIcons[machine.machine_type]}</span>
           <div>
-            <h3 className="font-semibold text-gray-800 truncate max-w-[180px]">
+            <h3 className="max-w-[180px] truncate font-semibold text-zinc-100">
               {machine.machine_name}
             </h3>
-            <p className="text-xs text-gray-400">{machine.machine_type}</p>
+            <p className="text-xs text-zinc-500">{machine.machine_type}</p>
           </div>
         </div>
         <HealthIndicator status={machine.health_status} size="md" />
@@ -85,28 +85,28 @@ export function MachineCard({ machine, onClick, isSelected = false }: MachineCar
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 gap-2 mb-3">
-        <div className="bg-gray-50 rounded px-2 py-1.5">
-          <div className="text-[10px] text-gray-400 uppercase">Snapshots</div>
-          <div className="text-sm font-semibold text-gray-700">{machine.snapshot_count}</div>
+        <div className="rounded border border-[var(--border)] bg-white/5 px-2 py-1.5">
+          <div className="text-[10px] uppercase text-zinc-500">Snapshots</div>
+          <div className="text-sm font-semibold text-zinc-100">{machine.snapshot_count}</div>
         </div>
-        <div className="bg-gray-50 rounded px-2 py-1.5">
-          <div className="text-[10px] text-gray-400 uppercase">Processes</div>
-          <div className="text-sm font-semibold text-gray-700">{machine.active_process_count}</div>
+        <div className="rounded border border-[var(--border)] bg-white/5 px-2 py-1.5">
+          <div className="text-[10px] uppercase text-zinc-500">Processes</div>
+          <div className="text-sm font-semibold text-zinc-100">{machine.active_process_count}</div>
         </div>
-        <div className="bg-gray-50 rounded px-2 py-1.5">
-          <div className="text-[10px] text-gray-400 uppercase">Ports</div>
-          <div className="text-sm font-semibold text-gray-700">{machine.listening_port_count}</div>
+        <div className="rounded border border-[var(--border)] bg-white/5 px-2 py-1.5">
+          <div className="text-[10px] uppercase text-zinc-500">Ports</div>
+          <div className="text-sm font-semibold text-zinc-100">{machine.listening_port_count}</div>
         </div>
-        <div className="bg-gray-50 rounded px-2 py-1.5">
-          <div className="text-[10px] text-gray-400 uppercase">Memory</div>
-          <div className="text-sm font-semibold text-gray-700">
+        <div className="rounded border border-[var(--border)] bg-white/5 px-2 py-1.5">
+          <div className="text-[10px] uppercase text-zinc-500">Memory</div>
+          <div className="text-sm font-semibold text-zinc-100">
             {machine.latest_memory_gb != null ? `${machine.latest_memory_gb} GB` : '-'}
           </div>
         </div>
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between text-xs text-gray-400 pt-2 border-t border-gray-100">
+      <div className="flex items-center justify-between border-t border-[var(--border)] pt-2 text-xs text-zinc-500">
         <span>{formatTimestamp(machine.latest_timestamp)}</span>
         <span>{formatBytes(machine.largest_snapshot_bytes)}</span>
       </div>

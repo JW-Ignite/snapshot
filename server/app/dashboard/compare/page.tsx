@@ -132,13 +132,13 @@ export default function ComparePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100">
+      <div className="app-shell min-h-screen">
         <Header />
         <div className="max-w-7xl mx-auto px-4 py-8">
           <div className="flex items-center justify-center py-20">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-              <p className="text-gray-500">Loading machines...</p>
+              <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-white"></div>
+              <p className="text-zinc-500">Loading machines...</p>
             </div>
           </div>
         </div>
@@ -147,22 +147,22 @@ export default function ComparePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="app-shell min-h-screen">
       <Header />
 
-      <main className="max-w-7xl mx-auto px-4 py-6">
+      <main className="app-page">
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Left: Machine Selector */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-              <h3 className="font-semibold text-gray-800 mb-2">Select Machines</h3>
-              <p className="text-sm text-gray-500">
+            <div className="app-card app-card-inner mb-4">
+              <h3 className="mb-2 font-semibold text-zinc-100">Select Machines</h3>
+              <p className="text-sm text-zinc-500">
                 Choose 2 or more machines to compare side-by-side.
               </p>
               {selectedIds.length > 0 && (
                 <button
                   onClick={() => setSelectedIds([])}
-                  className="mt-3 w-full px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200"
+                  className="app-btn app-btn-secondary mt-3 w-full"
                 >
                   Clear Selection ({selectedIds.length})
                 </button>
@@ -177,25 +177,24 @@ export default function ComparePage() {
                     key={machine.machine_id}
                     onClick={() => handleToggleMachine(machine.machine_id)}
                     className={`
-                      bg-white rounded-lg p-3 shadow-sm cursor-pointer
-                      border-2 transition-all
+                      app-card app-card-inner cursor-pointer border-2 transition-all
                       ${isSelected
-                        ? 'border-indigo-500 ring-2 ring-indigo-200'
-                        : 'border-transparent hover:border-indigo-200'
+                        ? 'border-white/70 ring-2 ring-white/10'
+                        : 'border-transparent hover:border-white/20'
                       }
                     `}
                   >
                     <div className="flex items-center gap-3">
                       <div className={`
                         w-6 h-6 rounded-full border-2 flex items-center justify-center
-                        ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300'}
+                        ${isSelected ? 'bg-white border-white text-black' : 'border-[var(--border-hover)]'}
                       `}>
                         {isSelected && <span className="text-xs font-bold">✓</span>}
                       </div>
                       <span className="text-xl">{machineTypeIcons[machine.machine_type]}</span>
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-gray-800 truncate">{machine.machine_name}</h4>
-                        <p className="text-xs text-gray-400">{machine.machine_type}</p>
+                        <h4 className="truncate font-medium text-zinc-100">{machine.machine_name}</h4>
+                        <p className="text-xs text-zinc-500">{machine.machine_type}</p>
                       </div>
                       <HealthIndicator status={machine.health_status} size="sm" />
                     </div>
@@ -208,18 +207,18 @@ export default function ComparePage() {
           {/* Right: Comparison Table */}
           <div className="lg:col-span-2">
             {selectedMachines.length < 2 ? (
-              <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+              <div className="app-card app-card-inner text-center">
                 <div className="text-6xl mb-4">⚖️</div>
-                <h3 className="text-xl font-semibold text-gray-700 mb-2">Compare Machines</h3>
-                <p className="text-gray-500">
+                <h3 className="mb-2 text-xl font-semibold text-zinc-100">Compare Machines</h3>
+                <p className="text-zinc-500">
                   Select at least 2 machines from the list to see a side-by-side comparison.
                 </p>
               </div>
             ) : (
               <div className="space-y-6">
                 {/* Comparison Header */}
-                <div className="bg-white rounded-lg shadow-sm p-4">
-                  <h3 className="font-semibold text-gray-800 mb-4">
+                <div className="app-card app-card-inner">
+                  <h3 className="mb-4 font-semibold text-zinc-100">
                     Comparing {selectedMachines.length} Machines
                   </h3>
 
@@ -228,8 +227,8 @@ export default function ComparePage() {
                     {selectedMachines.map((machine, idx) => (
                       <div key={machine.machine_id} className="text-center">
                         <span className="text-2xl">{machineTypeIcons[machine.machine_type]}</span>
-                        <h4 className="font-medium text-gray-800 truncate mt-1">{machine.machine_name}</h4>
-                        <p className="text-xs text-gray-400">{machine.machine_type}</p>
+                        <h4 className="mt-1 truncate font-medium text-zinc-100">{machine.machine_name}</h4>
+                        <p className="text-xs text-zinc-500">{machine.machine_type}</p>
                       </div>
                     ))}
                   </div>
@@ -268,8 +267,8 @@ export default function ComparePage() {
                     />
 
                     {/* Health Status Row */}
-                    <div className="bg-white rounded-lg shadow-sm p-4">
-                      <div className="text-sm font-medium text-gray-500 mb-3">Health Status</div>
+                    <div className="app-card app-card-inner">
+                      <div className="mb-3 text-sm font-medium text-zinc-500">Health Status</div>
                       <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${selectedMachines.length}, 1fr)` }}>
                         {selectedMachines.map(machine => (
                           <div key={machine.machine_id} className="text-center">
@@ -280,11 +279,11 @@ export default function ComparePage() {
                     </div>
 
                     {/* OS Info Row */}
-                    <div className="bg-white rounded-lg shadow-sm p-4">
-                      <div className="text-sm font-medium text-gray-500 mb-3">Operating System</div>
+                    <div className="app-card app-card-inner">
+                      <div className="mb-3 text-sm font-medium text-zinc-500">Operating System</div>
                       <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${selectedMachines.length}, 1fr)` }}>
                         {selectedMachines.map(machine => (
-                          <div key={machine.machine_id} className="text-center text-sm text-gray-700">
+                          <div key={machine.machine_id} className="text-center text-sm text-zinc-100">
                             {machine.os_info || 'Unknown'}
                           </div>
                         ))}
@@ -292,13 +291,13 @@ export default function ComparePage() {
                     </div>
 
                     {/* CPU Info Row */}
-                    <div className="bg-white rounded-lg shadow-sm p-4">
-                      <div className="text-sm font-medium text-gray-500 mb-3">CPU</div>
+                    <div className="app-card app-card-inner">
+                      <div className="mb-3 text-sm font-medium text-zinc-500">CPU</div>
                       <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${selectedMachines.length}, 1fr)` }}>
                         {selectedMachines.map(machine => (
                           <div key={machine.machine_id} className="text-center">
-                            <div className="text-sm text-gray-700 truncate">{machine.cpu_brand || 'Unknown'}</div>
-                            <div className="text-xs text-gray-400">{machine.latest_cpu_cores ?? '-'} cores</div>
+                            <div className="truncate text-sm text-zinc-100">{machine.cpu_brand || 'Unknown'}</div>
+                            <div className="text-xs text-zinc-500">{machine.latest_cpu_cores ?? '-'} cores</div>
                           </div>
                         ))}
                       </div>
@@ -316,14 +315,14 @@ export default function ComparePage() {
 
 function Header() {
   return (
-    <header className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg">
-      <div className="max-w-7xl mx-auto px-4 py-4">
+    <header className="app-header text-white">
+      <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-0 py-0">
         <div className="flex items-center gap-4">
-          <Link href="/dashboard/engineer" className="text-white/80 hover:text-white text-sm">
+          <Link href="/dashboard/engineer" className="text-sm text-zinc-400 hover:text-zinc-100">
             ← Back to Overview
           </Link>
-          <div className="h-6 w-px bg-white/30" />
-          <h1 className="text-xl font-bold flex items-center gap-2">
+          <div className="h-6 w-px bg-[var(--border)]" />
+          <h1 className="flex items-center gap-2 text-xl font-bold">
             <span>⚖️</span>
             Compare Machines
           </h1>
@@ -343,10 +342,10 @@ interface MetricRowProps {
 
 function MetricRow({ label, machines, getValue, format, metrics }: MetricRowProps) {
   return (
-    <div className="bg-white rounded-lg shadow-sm p-4">
+    <div className="app-card app-card-inner">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-medium text-gray-500">{label}</span>
-        <span className="text-xs text-gray-400">
+        <span className="text-sm font-medium text-zinc-500">{label}</span>
+        <span className="text-xs text-zinc-500">
           Min: {format(metrics.min)} | Max: {format(metrics.max)} | Avg: {format(metrics.avg)}
         </span>
       </div>
@@ -360,12 +359,12 @@ function MetricRow({ label, machines, getValue, format, metrics }: MetricRowProp
             <div key={machine.machine_id} className="text-center">
               <span className={`
                 text-2xl font-semibold
-                ${isMax ? 'text-red-600' : isMin ? 'text-emerald-600' : 'text-gray-800'}
+                ${isMax ? 'text-red-300' : isMin ? 'text-emerald-300' : 'text-zinc-100'}
               `}>
                 {format(value)}
               </span>
-              {isMax && <span className="ml-1 text-xs text-red-500">↑</span>}
-              {isMin && <span className="ml-1 text-xs text-emerald-500">↓</span>}
+              {isMax && <span className="ml-1 text-xs text-red-300">↑</span>}
+              {isMin && <span className="ml-1 text-xs text-emerald-300">↓</span>}
             </div>
           );
         })}

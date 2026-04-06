@@ -110,11 +110,11 @@ export function MachineCardGrid({ machines, onSelectMachine, selectedMachineId }
         {(['healthy', 'warning', 'critical', 'stale'] as HealthStatus[]).map(status => (
           <div
             key={status}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
-              status === 'healthy' ? 'bg-emerald-100 text-emerald-700' :
-              status === 'warning' ? 'bg-amber-100 text-amber-700' :
-              status === 'critical' ? 'bg-red-100 text-red-700' :
-              'bg-gray-100 text-gray-600'
+            className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium ${
+              status === 'healthy' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' :
+              status === 'warning' ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' :
+              status === 'critical' ? 'border-red-500/30 bg-red-500/10 text-red-300' :
+              'border-zinc-500/30 bg-zinc-500/10 text-zinc-300'
             }`}
           >
             <span className="capitalize">{status}</span>
@@ -130,14 +130,14 @@ export function MachineCardGrid({ machines, onSelectMachine, selectedMachineId }
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search machines..."
-          className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm"
+          className="app-input flex-1 text-sm"
         />
 
         <div className="flex gap-2">
           <select
             value={sortField}
             onChange={(e) => setSortField(e.target.value as SortField)}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm bg-white"
+            className="app-input bg-[var(--surface-2)] px-3 py-2 text-sm"
           >
             {sortOptions.map(opt => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -146,7 +146,7 @@ export function MachineCardGrid({ machines, onSelectMachine, selectedMachineId }
 
           <button
             onClick={() => setSortDirection(d => d === 'asc' ? 'desc' : 'asc')}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm bg-white hover:bg-gray-50"
+            className="app-btn app-btn-secondary px-3 py-2 text-sm"
           >
             {getDirectionLabel(sortField, sortDirection)}
           </button>
@@ -154,7 +154,7 @@ export function MachineCardGrid({ machines, onSelectMachine, selectedMachineId }
       </div>
 
       {/* Machine Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {filteredAndSorted.map(machine => (
           <MachineCard
             key={machine.machine_id}
@@ -167,7 +167,7 @@ export function MachineCardGrid({ machines, onSelectMachine, selectedMachineId }
 
       {/* Empty State */}
       {filteredAndSorted.length === 0 && (
-        <div className="text-center py-12 text-gray-500">
+        <div className="py-12 text-center text-zinc-500">
           {search ? 'No machines match your search.' : 'No machines found.'}
         </div>
       )}

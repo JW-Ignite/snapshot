@@ -30,10 +30,10 @@ export function SystemInfoCard({ system, compact = false }: SystemInfoCardProps)
 
   if (compact) {
     return (
-      <div className="flex flex-wrap gap-2 text-sm">
+      <div className="flex flex-wrap gap-2 text-sm text-zinc-300">
         {items.slice(0, 4).map(([label, value]) => (
-          <span key={label as string} className="text-gray-500">
-            <span className="font-medium text-gray-700">{label}:</span> {value}
+          <span key={label as string} className="text-zinc-400">
+            <span className="font-medium text-zinc-200">{label}:</span> {value}
           </span>
         ))}
       </div>
@@ -41,11 +41,11 @@ export function SystemInfoCard({ system, compact = false }: SystemInfoCardProps)
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+    <div className="app-stat-grid cols-3">
       {items.map(([label, value]) => (
-        <div key={label as string} className="bg-white rounded-lg p-4 shadow-sm">
-          <div className="text-xs text-gray-400 uppercase tracking-wide">{label}</div>
-          <div className="font-medium text-gray-800 mt-1">{value}</div>
+        <div key={label as string} className="app-card app-card-inner app-card-muted">
+          <div className="app-kicker">{label}</div>
+          <div className="mt-1 font-medium text-zinc-100">{value}</div>
         </div>
       ))}
     </div>

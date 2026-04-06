@@ -7,10 +7,10 @@ interface HealthIndicatorProps {
 }
 
 const statusConfig: Record<HealthStatus, { color: string; bgColor: string; label: string }> = {
-  healthy: { color: 'bg-emerald-500', bgColor: 'bg-emerald-100', label: 'Healthy' },
-  warning: { color: 'bg-amber-500', bgColor: 'bg-amber-100', label: 'Warning' },
-  critical: { color: 'bg-red-500', bgColor: 'bg-red-100', label: 'Critical' },
-  stale: { color: 'bg-gray-400', bgColor: 'bg-gray-100', label: 'Stale' },
+  healthy: { color: 'bg-emerald-400', bgColor: 'bg-emerald-500/10', label: 'Healthy' },
+  warning: { color: 'bg-amber-400', bgColor: 'bg-amber-500/10', label: 'Warning' },
+  critical: { color: 'bg-red-400', bgColor: 'bg-red-500/10', label: 'Critical' },
+  stale: { color: 'bg-zinc-500', bgColor: 'bg-zinc-500/10', label: 'Stale' },
 };
 
 const sizeConfig = {
@@ -37,7 +37,7 @@ export function HealthIndicator({ status, size = 'md', showLabel = false }: Heal
       </div>
 
       {showLabel && (
-        <span className={`${sizes.text} font-medium text-gray-600`}>
+        <span className={`${sizes.text} font-medium text-zinc-300`}>
           {config.label}
         </span>
       )}

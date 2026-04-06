@@ -44,48 +44,48 @@ interface SnapshotDiffProps {
 
 export function SnapshotDiff({ comparison, baselineName, afterName }: SnapshotDiffProps) {
   const memoryChange = parseFloat(comparison.memory_change_gb);
-  const memoryChangeColor = memoryChange > 0 ? 'text-red-600' : memoryChange < 0 ? 'text-emerald-600' : 'text-gray-600';
+  const memoryChangeColor = memoryChange > 0 ? 'text-red-300' : memoryChange < 0 ? 'text-emerald-300' : 'text-zinc-400';
   const memoryChangeSign = memoryChange > 0 ? '+' : '';
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white rounded-lg p-4 shadow-sm">
+      <div className="app-card app-card-inner">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="font-semibold text-gray-800">Comparison Results</h3>
-          <span className="text-sm text-gray-500">
+          <h3 className="font-semibold text-zinc-100">Comparison Results</h3>
+          <span className="text-sm text-zinc-500">
             {comparison.time_diff_minutes} minutes between snapshots
           </span>
         </div>
         <div className="flex gap-4 text-sm">
           <div className="flex items-center gap-2">
-            <span className="w-6 h-6 bg-indigo-600 text-white text-xs font-bold rounded-full flex items-center justify-center">A</span>
-            <span className="text-gray-600">{baselineName}</span>
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-black">A</span>
+            <span className="text-zinc-300">{baselineName}</span>
           </div>
-          <span className="text-gray-400">→</span>
+          <span className="text-zinc-500">→</span>
           <div className="flex items-center gap-2">
-            <span className="w-6 h-6 bg-indigo-600 text-white text-xs font-bold rounded-full flex items-center justify-center">B</span>
-            <span className="text-gray-600">{afterName}</span>
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-black">B</span>
+            <span className="text-zinc-300">{afterName}</span>
           </div>
         </div>
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg p-4 shadow-sm">
-          <div className="text-xs text-gray-400 uppercase">New Processes</div>
-          <div className="text-2xl font-semibold text-amber-600">{comparison.new_processes.length}</div>
+      <div className="app-stat-grid cols-4">
+        <div className="app-card app-card-inner">
+          <div className="app-kicker">New Processes</div>
+          <div className="text-2xl font-semibold text-amber-300">{comparison.new_processes.length}</div>
         </div>
-        <div className="bg-white rounded-lg p-4 shadow-sm">
-          <div className="text-xs text-gray-400 uppercase">Removed Processes</div>
-          <div className="text-2xl font-semibold text-red-600">{comparison.removed_processes.length}</div>
+        <div className="app-card app-card-inner">
+          <div className="app-kicker">Removed Processes</div>
+          <div className="text-2xl font-semibold text-red-300">{comparison.removed_processes.length}</div>
         </div>
-        <div className="bg-white rounded-lg p-4 shadow-sm">
-          <div className="text-xs text-gray-400 uppercase">Changed Processes</div>
-          <div className="text-2xl font-semibold text-blue-600">{comparison.process_changes.length}</div>
+        <div className="app-card app-card-inner">
+          <div className="app-kicker">Changed Processes</div>
+          <div className="text-2xl font-semibold text-sky-300">{comparison.process_changes.length}</div>
         </div>
-        <div className="bg-white rounded-lg p-4 shadow-sm">
-          <div className="text-xs text-gray-400 uppercase">Memory Change</div>
+        <div className="app-card app-card-inner">
+          <div className="app-kicker">Memory Change</div>
           <div className={`text-2xl font-semibold ${memoryChangeColor}`}>
             {memoryChangeSign}{comparison.memory_change_gb} GB
           </div>
@@ -95,27 +95,27 @@ export function SnapshotDiff({ comparison, baselineName, afterName }: SnapshotDi
       {/* Detailed Sections */}
       <div className="grid md:grid-cols-2 gap-6">
         {/* New Processes */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <div className="bg-amber-50 px-4 py-3 border-b border-amber-200">
-            <h4 className="font-semibold text-amber-800">
+        <div className="app-card overflow-hidden">
+          <div className="border-b border-[var(--border)] bg-white/5 px-4 py-3">
+            <h4 className="font-semibold text-amber-300">
               New Processes ({comparison.new_processes.length})
             </h4>
           </div>
           <div className="max-h-60 overflow-y-auto">
             {comparison.new_processes.length === 0 ? (
-              <div className="px-4 py-6 text-center text-gray-400 text-sm">No new processes</div>
+              <div className="px-4 py-6 text-center text-sm text-zinc-500">No new processes</div>
             ) : (
               comparison.new_processes.slice(0, 20).map((proc, i) => (
-                <div key={i} className="px-4 py-2 border-b border-gray-100 text-sm flex justify-between">
-                  <span className="font-medium text-gray-700">{proc.name}</span>
-                  <span className="text-gray-400">
+                <div key={i} className="flex justify-between border-b border-[var(--border)] px-4 py-3 text-sm last:border-b-0">
+                  <span className="font-medium text-zinc-100">{proc.name}</span>
+                  <span className="text-zinc-500">
                     CPU {proc.cpu_usage?.toFixed(1) ?? '0'}% | MEM {proc.mem_usage?.toFixed(1) ?? '0'}%
                   </span>
                 </div>
               ))
             )}
             {comparison.new_processes.length > 20 && (
-              <div className="px-4 py-2 text-center text-gray-400 text-sm">
+              <div className="px-4 py-3 text-center text-sm text-zinc-500">
                 ...and {comparison.new_processes.length - 20} more
               </div>
             )}
@@ -123,24 +123,24 @@ export function SnapshotDiff({ comparison, baselineName, afterName }: SnapshotDi
         </div>
 
         {/* Removed Processes */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <div className="bg-red-50 px-4 py-3 border-b border-red-200">
-            <h4 className="font-semibold text-red-800">
+        <div className="app-card overflow-hidden">
+          <div className="border-b border-[var(--border)] bg-white/5 px-4 py-3">
+            <h4 className="font-semibold text-red-300">
               Removed Processes ({comparison.removed_processes.length})
             </h4>
           </div>
           <div className="max-h-60 overflow-y-auto">
             {comparison.removed_processes.length === 0 ? (
-              <div className="px-4 py-6 text-center text-gray-400 text-sm">No removed processes</div>
+              <div className="px-4 py-6 text-center text-sm text-zinc-500">No removed processes</div>
             ) : (
               comparison.removed_processes.slice(0, 20).map((proc, i) => (
-                <div key={i} className="px-4 py-2 border-b border-gray-100 text-sm">
-                  <span className="font-medium text-gray-700">{proc.name}</span>
+                <div key={i} className="border-b border-[var(--border)] px-4 py-3 text-sm last:border-b-0">
+                  <span className="font-medium text-zinc-100">{proc.name}</span>
                 </div>
               ))
             )}
             {comparison.removed_processes.length > 20 && (
-              <div className="px-4 py-2 text-center text-gray-400 text-sm">
+              <div className="px-4 py-3 text-center text-sm text-zinc-500">
                 ...and {comparison.removed_processes.length - 20} more
               </div>
             )}
@@ -148,24 +148,24 @@ export function SnapshotDiff({ comparison, baselineName, afterName }: SnapshotDi
         </div>
 
         {/* Process Changes */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <div className="bg-blue-50 px-4 py-3 border-b border-blue-200">
-            <h4 className="font-semibold text-blue-800">
+        <div className="app-card overflow-hidden">
+          <div className="border-b border-[var(--border)] bg-white/5 px-4 py-3">
+            <h4 className="font-semibold text-sky-300">
               Process Changes ({comparison.process_changes.length})
             </h4>
           </div>
           <div className="max-h-60 overflow-y-auto">
             {comparison.process_changes.length === 0 ? (
-              <div className="px-4 py-6 text-center text-gray-400 text-sm">No significant changes</div>
+              <div className="px-4 py-6 text-center text-sm text-zinc-500">No significant changes</div>
             ) : (
               comparison.process_changes.slice(0, 20).map((proc, i) => (
-                <div key={i} className="px-4 py-2 border-b border-gray-100 text-sm">
-                  <div className="font-medium text-gray-700">{proc.name}</div>
-                  <div className="flex gap-4 text-xs text-gray-500 mt-1">
-                    <span className={proc.cpu_change > 0 ? 'text-red-500' : 'text-emerald-500'}>
+                <div key={i} className="border-b border-[var(--border)] px-4 py-3 text-sm last:border-b-0">
+                  <div className="font-medium text-zinc-100">{proc.name}</div>
+                  <div className="mt-1 flex gap-4 text-xs text-zinc-500">
+                    <span className={proc.cpu_change > 0 ? 'text-red-300' : 'text-emerald-300'}>
                       CPU: {proc.cpu_change > 0 ? '+' : ''}{proc.cpu_change.toFixed(2)}%
                     </span>
-                    <span className={proc.mem_change > 0 ? 'text-red-500' : 'text-emerald-500'}>
+                    <span className={proc.mem_change > 0 ? 'text-red-300' : 'text-emerald-300'}>
                       MEM: {proc.mem_change > 0 ? '+' : ''}{proc.mem_change.toFixed(2)}%
                     </span>
                   </div>
@@ -173,7 +173,7 @@ export function SnapshotDiff({ comparison, baselineName, afterName }: SnapshotDi
               ))
             )}
             {comparison.process_changes.length > 20 && (
-              <div className="px-4 py-2 text-center text-gray-400 text-sm">
+              <div className="px-4 py-3 text-center text-sm text-zinc-500">
                 ...and {comparison.process_changes.length - 20} more
               </div>
             )}
@@ -181,27 +181,27 @@ export function SnapshotDiff({ comparison, baselineName, afterName }: SnapshotDi
         </div>
 
         {/* New Listening Ports */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <div className="bg-purple-50 px-4 py-3 border-b border-purple-200">
-            <h4 className="font-semibold text-purple-800">
+        <div className="app-card overflow-hidden">
+          <div className="border-b border-[var(--border)] bg-white/5 px-4 py-3">
+            <h4 className="font-semibold text-zinc-200">
               New Listening Ports ({comparison.new_listening_ports.length})
             </h4>
           </div>
           <div className="max-h-60 overflow-y-auto">
             {comparison.new_listening_ports.length === 0 ? (
-              <div className="px-4 py-6 text-center text-gray-400 text-sm">No new ports</div>
+              <div className="px-4 py-6 text-center text-sm text-zinc-500">No new ports</div>
             ) : (
               comparison.new_listening_ports.slice(0, 20).map((port, i) => (
-                <div key={i} className="px-4 py-2 border-b border-gray-100 text-sm flex justify-between">
-                  <span className="font-medium text-gray-700">{port.process_name || 'Unknown'}</span>
-                  <span className="text-gray-400">
+                <div key={i} className="flex justify-between border-b border-[var(--border)] px-4 py-3 text-sm last:border-b-0">
+                  <span className="font-medium text-zinc-100">{port.process_name || 'Unknown'}</span>
+                  <span className="text-zinc-500">
                     {port.protocol?.toUpperCase()} :{port.local_port}
                   </span>
                 </div>
               ))
             )}
             {comparison.new_listening_ports.length > 20 && (
-              <div className="px-4 py-2 text-center text-gray-400 text-sm">
+              <div className="px-4 py-3 text-center text-sm text-zinc-500">
                 ...and {comparison.new_listening_ports.length - 20} more
               </div>
             )}

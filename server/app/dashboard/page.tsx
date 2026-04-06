@@ -269,41 +269,41 @@ export default function Dashboard() {
   }, [machineGroups]);
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="app-shell flex h-screen">
       {/* Sidebar */}
-      <div className="w-80 bg-white border-r overflow-y-auto flex flex-col">
-        <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
+      <div className="w-80 flex flex-col overflow-y-auto app-sidebar rounded-none border-y-0 border-l-0 border-r">
+        <div className="border-b border-[var(--border)] bg-[var(--surface)] p-4 text-white">
           <h1 className="text-xl font-bold">📸 Snapshot Server</h1>
-          <p className="text-sm opacity-80">Multi-machine dashboard</p>
+          <p className="text-sm text-zinc-500">Multi-machine dashboard</p>
           <button
             onClick={loadSnapshots}
             disabled={refreshing}
-            className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 disabled:opacity-60 rounded-lg text-sm font-medium transition-colors"
+            className="app-btn app-btn-secondary mt-3"
           >
             {refreshing ? 'Refreshing...' : 'Refresh'}
           </button>
           <Link
             href="/dashboard/engineer"
-            className="mt-3 ml-2 inline-flex items-center gap-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
+            className="app-btn app-btn-secondary mt-3 ml-2"
           >
             <span>⚙️</span>
             Engineer Panel
-            <span className="text-white/60">→</span>
+            <span className="text-zinc-500">→</span>
           </Link>
         </div>
 
-        {loading && <p className="p-4 text-gray-500">Loading...</p>}
-        {error && <p className="p-4 text-red-500">{error}</p>}
+        {loading && <p className="p-4 text-zinc-500">Loading...</p>}
+        {error && <p className="p-4 text-red-300">{error}</p>}
 
-        <div className="p-3 border-b bg-gray-50 space-y-2">
+        <div className="border-b border-[var(--border)] p-3 space-y-2 bg-[var(--surface)]">
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search machines or tests..."
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-base font-medium text-gray-800 placeholder:text-gray-500 bg-white"
+            className="app-input w-full text-base font-medium"
           />
-          <div className="rounded-md border border-gray-200 bg-white p-2">
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Sort</div>
+          <div className="app-card app-card-inner p-2">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">Sort</div>
             <div className="flex flex-wrap gap-2 mb-2">
               {sortFieldOptions.map(option => {
                 const active = sortField === option.value;
@@ -313,8 +313,8 @@ export default function Dashboard() {
                     onClick={() => setSortField(option.value)}
                     className={`px-2.5 py-1.5 rounded-full text-sm font-semibold border transition-colors ${
                       active
-                        ? 'bg-indigo-600 text-white border-indigo-600'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-indigo-400'
+                        ? 'bg-white text-black border-white'
+                        : 'bg-transparent text-zinc-300 border-[var(--border)] hover:border-white/30'
                     }`}
                   >
                     {option.label}
@@ -324,25 +324,25 @@ export default function Dashboard() {
             </div>
             <button
               onClick={() => setSortDirection(prev => (prev === 'desc' ? 'asc' : 'desc'))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-semibold text-gray-800 bg-gray-50 hover:bg-gray-100 transition-colors"
+              className="app-btn app-btn-secondary w-full"
             >
               Order: {getDirectionLabel(sortField, sortDirection)}
             </button>
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-zinc-500">
             {totalMachines} machines · {snapshots.length} snapshots
           </p>
-          <p className="text-xs text-gray-400">Manual refresh only to keep Supabase egress and Vercel CPU low.</p>
+          <p className="text-xs text-zinc-600">Manual refresh only to keep Supabase egress and Vercel CPU low.</p>
         </div>
 
         {visibleMachines.map(machine => {
           return (
-            <div key={machine.machineId} className="border-b">
-              <div className="px-4 py-2 bg-gray-50">
-                <div className="font-semibold text-sm text-gray-700 tracking-wide">
+            <div key={machine.machineId} className="border-b border-[var(--border)]">
+              <div className="bg-[var(--surface)] px-4 py-2">
+                <div className="text-sm font-semibold tracking-wide text-zinc-200">
                   🖥️ {machine.machineName}
                 </div>
-                <div className="text-xs text-gray-500 mt-0.5">
+                <div className="mt-0.5 text-xs text-zinc-500">
                   {machine.machineType} · {machine.snapshots.length} snapshots · Largest {formatBytes(machine.largestSnapshotSizeBytes)} · Status {machine.highestPriorityStatus} · Last update {new Date(machine.latestTimestamp).toLocaleString()}
                 </div>
               </div>
@@ -350,25 +350,25 @@ export default function Dashboard() {
                 <div
                   key={snap.id}
                   onClick={() => loadSnapshot(snap.id)}
-                  className={`px-4 py-3 cursor-pointer hover:bg-indigo-50 border-b text-sm transition-colors group ${
-                    selected?.id === snap.id ? 'bg-indigo-100 border-l-4 border-indigo-500' : ''
+                  className={`group cursor-pointer border-b border-[var(--border)] px-4 py-3 text-sm transition-colors hover:bg-white/5 ${
+                    selected?.id === snap.id ? 'border-l-4 border-white bg-white/5' : ''
                   }`}
                 >
                   <div className="flex justify-between items-start">
-                    <div className="font-medium text-gray-800">{snap.snapshot_name}</div>
-                    <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ml-2 ${statusBadgeClasses(normalizeSnapshotStatus(snap.snapshot_status))}`}>
+                    <div className="font-medium text-zinc-100">{snap.snapshot_name}</div>
+                    <span className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClasses(normalizeSnapshotStatus(snap.snapshot_status))}`}>
                       {normalizeSnapshotStatus(snap.snapshot_status)}
                     </span>
                     <button
                       onClick={e => { e.stopPropagation(); deleteSnapshot(snap.id); }}
                       disabled={deleting}
-                      className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-xs ml-2 shrink-0"
+                      className="ml-2 shrink-0 text-xs text-red-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-200"
                       title="Delete snapshot"
                     >
                       ✕
                     </button>
                   </div>
-                  <div className="text-gray-400 text-xs mt-0.5">
+                  <div className="mt-0.5 text-xs text-zinc-500">
                     {new Date(snap.timestamp).toLocaleString()}
                   </div>
                 </div>
@@ -378,7 +378,7 @@ export default function Dashboard() {
         })}
 
         {!loading && !error && visibleMachines.length === 0 && (
-          <p className="p-4 text-sm text-gray-500">No machines match your filters.</p>
+          <p className="p-4 text-sm text-zinc-500">No machines match your filters.</p>
         )}
       </div>
 
@@ -386,21 +386,21 @@ export default function Dashboard() {
       <div className="flex-1 overflow-y-auto">
         {!selected ? (
           <div className="p-8">
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">Organization Overview</h2>
-            <p className="text-gray-500 mb-6">Sort machines by recency, name, or type from the sidebar. Select any snapshot to inspect full details.</p>
+            <h2 className="mb-4 text-2xl font-bold text-zinc-100">Organization Overview</h2>
+            <p className="mb-6 text-zinc-500">Sort machines by recency, name, or type from the sidebar. Select any snapshot to inspect full details.</p>
 
-            <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+            <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               {Object.entries(machineTypeCounts).map(([type, count]) => (
-                <div key={type} className="bg-white rounded-lg p-4 shadow-sm">
-                  <div className="text-xs text-gray-400 uppercase tracking-wide">{type}</div>
-                  <div className="text-2xl font-semibold text-gray-800 mt-1">{count}</div>
+                <div key={type} className="app-card app-card-inner">
+                  <div className="app-kicker">{type}</div>
+                  <div className="mt-1 text-2xl font-semibold text-zinc-100">{count}</div>
                 </div>
               ))}
             </div>
 
-            <div className="bg-white rounded-lg p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">Feature Board</h3>
-              <ul className="text-sm text-gray-600 space-y-2 list-disc list-inside">
+            <div className="app-card app-card-inner">
+              <h3 className="mb-2 text-lg font-semibold text-zinc-100">Feature Board</h3>
+              <ul className="list-inside list-disc space-y-2 text-sm text-zinc-400">
                 <li>Now: sorting by recency, machine name, and inferred machine type.</li>
                 <li>Next: add tags (team, environment, risk level) for richer filtering.</li>
                 <li>Next: add status badges for stale machines (for example no snapshot in 7+ days).</li>
@@ -410,14 +410,14 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="p-8">
-            <div className="mb-6 pb-4 border-b flex justify-between items-start">
+            <div className="mb-6 flex items-start justify-between border-b border-[var(--border)] pb-4">
               <div>
-                <h2 className="text-2xl font-bold text-gray-800">{selected.snapshot_name}</h2>
-                <p className="text-gray-400 text-sm mt-1">
+                <h2 className="text-2xl font-bold text-zinc-100">{selected.snapshot_name}</h2>
+                <p className="mt-1 text-sm text-zinc-500">
                   {new Date(selected.timestamp).toLocaleString()} · 🖥️ {selected.machine_name}
                 </p>
                 {selected.data?.integrity && (
-                  <p className="text-xs text-gray-400 font-mono mt-1">
+                  <p className="mt-1 font-mono text-xs text-zinc-500">
                     ✓ SHA256: {selected.data.integrity.sha256_checksum.substring(0, 16)}...
                   </p>
                 )}
@@ -426,8 +426,8 @@ export default function Dashboard() {
 
             {/* System Info */}
             <section className="mb-8">
-              <h3 className="text-lg font-semibold text-gray-700 mb-3">💻 System Information</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <h3 className="mb-3 text-lg font-semibold text-zinc-200">💻 System Information</h3>
+              <div className="app-stat-grid cols-3">
                 {[
                   ['CPU', `${selected.data?.system?.cpu_brand}`],
                   ['Cores', selected.data?.system?.cpu_cores],
@@ -436,9 +436,9 @@ export default function Dashboard() {
                   ['Platform', selected.data?.system?.os_platform],
                   ['Disk', `${selected.data?.system?.total_disk_size_gb} GB`],
                 ].map(([label, value]) => (
-                  <div key={label as string} className="bg-white rounded-lg p-4 shadow-sm">
-                    <div className="text-xs text-gray-400 uppercase tracking-wide">{label}</div>
-                    <div className="font-medium text-gray-800 mt-1">{value}</div>
+                  <div key={label as string} className="app-card app-card-inner app-card-muted">
+                    <div className="app-kicker">{label}</div>
+                    <div className="mt-1 font-medium text-zinc-100">{value}</div>
                   </div>
                 ))}
               </div>
@@ -446,12 +446,12 @@ export default function Dashboard() {
 
             {/* Network */}
             <section className="mb-8">
-              <h3 className="text-lg font-semibold text-gray-700 mb-3">🌐 Listening Ports</h3>
-              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+              <h3 className="mb-3 text-lg font-semibold text-zinc-200">🌐 Listening Ports</h3>
+              <div className="app-card overflow-hidden">
                 {selected.data?.network?.listening_ports?.slice(0, 10).map((port: any, i: number) => (
-                  <div key={i} className="px-4 py-2 border-b text-sm flex justify-between">
-                    <span className="font-medium">{port.process_name || 'Unknown'}</span>
-                    <span className="text-gray-500">{port.protocol?.toUpperCase()} :{port.local_port}</span>
+                  <div key={i} className="flex justify-between border-b border-[var(--border)] px-4 py-3 text-sm last:border-b-0">
+                    <span className="font-medium text-zinc-100">{port.process_name || 'Unknown'}</span>
+                    <span className="text-zinc-500">{port.protocol?.toUpperCase()} :{port.local_port}</span>
                   </div>
                 ))}
               </div>
@@ -459,17 +459,17 @@ export default function Dashboard() {
 
             {/* Processes */}
             <section>
-              <h3 className="text-lg font-semibold text-gray-700 mb-3">
+              <h3 className="mb-3 text-lg font-semibold text-zinc-200">
                 ⚙️ Top Processes ({selected.process_count ?? selected.data?.running_processes?.length ?? 0} total)
               </h3>
-              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+              <div className="app-card overflow-hidden">
                 {selected.data?.running_processes?.slice(0, 20).map((proc: any, i: number) => (
-                  <div key={i} className="px-4 py-2 border-b text-sm flex justify-between items-center">
+                  <div key={i} className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3 text-sm last:border-b-0">
                     <div>
-                      <span className="font-medium">{proc.name}</span>
-                      <span className="text-gray-400 ml-2">PID {proc.pid}</span>
+                      <span className="font-medium text-zinc-100">{proc.name}</span>
+                      <span className="ml-2 text-zinc-500">PID {proc.pid}</span>
                     </div>
-                    <div className="text-right text-gray-500">
+                    <div className="text-right text-zinc-500">
                       <span className="mr-4">CPU {proc.cpu_usage?.toFixed(2)}%</span>
                       <span>MEM {proc.mem_usage?.toFixed(2)}%</span>
                     </div>

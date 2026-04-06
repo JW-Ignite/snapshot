@@ -47,7 +47,7 @@ export function TimelineView({
   return (
     <div className="relative">
       {/* Timeline line */}
-      <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
+      <div className="absolute bottom-0 left-4 top-0 w-0.5 bg-[var(--border)]" />
 
       {/* Timeline items */}
       <div className="space-y-4">
@@ -60,7 +60,7 @@ export function TimelineView({
             <div
               key={snapshot.id}
               className={`
-                relative pl-10 cursor-pointer
+                relative cursor-pointer pl-10
                 ${!canSelectMore && !isSelected ? 'opacity-50' : ''}
               `}
               onClick={() => {
@@ -74,15 +74,15 @@ export function TimelineView({
                 className={`
                   absolute left-2.5 w-3 h-3 rounded-full border-2
                   ${isSelected
-                    ? 'bg-indigo-600 border-indigo-600'
-                    : 'bg-white border-gray-300'
+                    ? 'bg-white border-white'
+                    : 'bg-[var(--surface)] border-[var(--border-hover)]'
                   }
                 `}
               />
 
               {/* Selection badge */}
               {isSelected && (
-                <div className="absolute left-0 -top-1 w-6 h-6 bg-indigo-600 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                <div className="absolute left-0 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-black">
                   {selectionIndex === 0 ? 'A' : 'B'}
                 </div>
               )}
@@ -90,22 +90,22 @@ export function TimelineView({
               {/* Card */}
               <div
                 className={`
-                  bg-white rounded-lg p-4 shadow-sm border-2 transition-all
+                  app-card app-card-inner transition-all
                   ${isSelected
-                    ? 'border-indigo-500 ring-2 ring-indigo-200'
-                    : 'border-transparent hover:border-indigo-200'
+                    ? 'border-white/70 ring-2 ring-white/10'
+                    : 'border-transparent hover:border-white/20'
                   }
                 `}
               >
                 <div className="flex items-start justify-between mb-2">
                   <div>
-                    <h4 className="font-medium text-gray-800">{snapshot.snapshot_name}</h4>
-                    <p className="text-xs text-gray-400">{date} at {time}</p>
+                    <h4 className="font-medium text-zinc-100">{snapshot.snapshot_name}</h4>
+                    <p className="text-xs text-zinc-500">{date} at {time}</p>
                   </div>
                   <StatusBadge status={snapshot.status} />
                 </div>
 
-                <div className="flex gap-4 text-xs text-gray-500 flex-wrap">
+                <div className="flex flex-wrap gap-4 text-xs text-zinc-500">
                   {snapshot.process_count != null && <span>{snapshot.process_count} processes</span>}
                   {snapshot.port_count != null && <span>{snapshot.port_count} ports</span>}
                   <span>{formatBytes(snapshot.size_bytes)}</span>
@@ -120,7 +120,7 @@ export function TimelineView({
       </div>
 
       {snapshots.length === 0 && (
-        <div className="text-center py-8 text-gray-500">
+        <div className="py-8 text-center text-zinc-500">
           No snapshots found for this machine.
         </div>
       )}
