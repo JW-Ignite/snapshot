@@ -269,9 +269,9 @@ export default function Dashboard() {
   }, [machineGroups]);
 
   return (
-    <div className="app-shell flex h-screen">
+    <div className="app-shell flex h-screen overflow-hidden">
       {/* Sidebar */}
-      <div className="w-80 flex flex-col overflow-y-auto app-sidebar rounded-none border-y-0 border-l-0 border-r">
+      <div className="w-80 flex min-h-0 flex-col overflow-hidden app-sidebar rounded-none border-y-0 border-l-0 border-r">
         <div className="border-b border-[var(--border)] bg-[var(--surface)] p-4 text-white">
           <h1 className="text-xl font-bold">📸 Snapshot Server</h1>
           <p className="text-sm text-zinc-500">Multi-machine dashboard</p>
@@ -291,9 +291,6 @@ export default function Dashboard() {
             <span className="text-zinc-500">→</span>
           </Link>
         </div>
-
-        {loading && <p className="p-4 text-zinc-500">Loading...</p>}
-        {error && <p className="p-4 text-red-300">{error}</p>}
 
         <div className="border-b border-[var(--border)] p-3 space-y-2 bg-[var(--surface)]">
           <input
@@ -335,51 +332,56 @@ export default function Dashboard() {
           <p className="text-xs text-zinc-600">Manual refresh only to keep Supabase egress and Vercel CPU low.</p>
         </div>
 
-        {visibleMachines.map(machine => {
-          return (
-            <div key={machine.machineId} className="border-b border-[var(--border)]">
-              <div className="bg-[var(--surface)] px-4 py-2">
-                <div className="text-sm font-semibold tracking-wide text-zinc-200">
-                  🖥️ {machine.machineName}
-                </div>
-                <div className="mt-0.5 text-xs text-zinc-500">
-                  {machine.machineType} · {machine.snapshots.length} snapshots · Largest {formatBytes(machine.largestSnapshotSizeBytes)} · Status {machine.highestPriorityStatus} · Last update {new Date(machine.latestTimestamp).toLocaleString()}
-                </div>
-              </div>
-              {machine.snapshots.map(snap => (
-                <div
-                  key={snap.id}
-                  onClick={() => loadSnapshot(snap.id)}
-                  className={`group cursor-pointer border-b border-[var(--border)] px-4 py-3 text-sm transition-colors hover:bg-white/5 ${
-                    selected?.id === snap.id ? 'border-l-4 border-white bg-white/5' : ''
-                  }`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="font-medium text-zinc-100">{snap.snapshot_name}</div>
-                    <span className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClasses(normalizeSnapshotStatus(snap.snapshot_status))}`}>
-                      {normalizeSnapshotStatus(snap.snapshot_status)}
-                    </span>
-                    <button
-                      onClick={e => { e.stopPropagation(); deleteSnapshot(snap.id); }}
-                      disabled={deleting}
-                      className="ml-2 shrink-0 text-xs text-red-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-200"
-                      title="Delete snapshot"
-                    >
-                      ✕
-                    </button>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {loading && <p className="p-4 text-zinc-500">Loading...</p>}
+          {error && <p className="p-4 text-red-300">{error}</p>}
+
+          {visibleMachines.map(machine => {
+            return (
+              <div key={machine.machineId} className="border-b border-[var(--border)]">
+                <div className="bg-[var(--surface)] px-4 py-2">
+                  <div className="text-sm font-semibold tracking-wide text-zinc-200">
+                    🖥️ {machine.machineName}
                   </div>
                   <div className="mt-0.5 text-xs text-zinc-500">
-                    {new Date(snap.timestamp).toLocaleString()}
+                    {machine.machineType} · {machine.snapshots.length} snapshots · Largest {formatBytes(machine.largestSnapshotSizeBytes)} · Status {machine.highestPriorityStatus} · Last update {new Date(machine.latestTimestamp).toLocaleString()}
                   </div>
                 </div>
-              ))}
-            </div>
-          );
-        })}
+                {machine.snapshots.map(snap => (
+                  <div
+                    key={snap.id}
+                    onClick={() => loadSnapshot(snap.id)}
+                    className={`group cursor-pointer border-b border-[var(--border)] px-4 py-3 text-sm transition-colors hover:bg-white/5 ${
+                      selected?.id === snap.id ? 'border-l-4 border-white bg-white/5' : ''
+                    }`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="font-medium text-zinc-100">{snap.snapshot_name}</div>
+                      <span className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClasses(normalizeSnapshotStatus(snap.snapshot_status))}`}>
+                        {normalizeSnapshotStatus(snap.snapshot_status)}
+                      </span>
+                      <button
+                        onClick={e => { e.stopPropagation(); deleteSnapshot(snap.id); }}
+                        disabled={deleting}
+                        className="ml-2 shrink-0 text-xs text-red-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-200"
+                        title="Delete snapshot"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="mt-0.5 text-xs text-zinc-500">
+                      {new Date(snap.timestamp).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
 
-        {!loading && !error && visibleMachines.length === 0 && (
-          <p className="p-4 text-sm text-zinc-500">No machines match your filters.</p>
-        )}
+          {!loading && !error && visibleMachines.length === 0 && (
+            <p className="p-4 text-sm text-zinc-500">No machines match your filters.</p>
+          )}
+        </div>
       </div>
 
       {/* Main content */}
