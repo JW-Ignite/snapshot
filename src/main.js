@@ -2,9 +2,15 @@ const si = require('systeminformation');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const os = require('os');
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const https = require('https');
 const http = require('http');
+
+// The app is CPU-bound and doesn't need GPU overlays; disabling hardware acceleration
+// avoids noisy mailbox/overlay warnings on some macOS systems.
+app.disableHardwareAcceleration();
+
 const HARDCODED_SNAPSHOT_SERVER_URL = 'https://instasnapshot.vercel.app';
 const HARDCODED_SNAPSHOT_API_KEY = 'EVERLIJvivjSNFSVUFDshgognSGAGFOurgergAGBUeraogferogVbneRAOBO';
 
@@ -59,6 +65,12 @@ async function takeSnapshot(filename, tests = {}) {
   };
 
   console.log('Tests to run:', run);
+  const startedAt = Date.now();
+  updateAgentStatus({
+    mode: 'snapshot',
+    currentTask: filename,
+    lastError: null,
+  });
 
   try {
     console.log(`Taking snapshot: ${filename}...`);
@@ -206,11 +218,27 @@ async function takeSnapshot(filename, tests = {}) {
     
     console.log(`Snapshot saved to: ${savePath}`);
     console.log(`Checksum: ${checksum}`);
+    updateAgentStatus({
+      mode: 'idle',
+      currentTask: null,
+      lastTask: `Snapshot ${filename}`,
+      lastRunAt: new Date().toISOString(),
+      lastDurationMs: Date.now() - startedAt,
+      lastError: null,
+    });
     return signedSnapshot;
 
   } catch (e) {
     console.error("Error taking snapshot:", e.message);
     console.error(e.stack);
+    updateAgentStatus({
+      mode: 'error',
+      currentTask: null,
+      lastTask: `Snapshot ${filename}`,
+      lastRunAt: new Date().toISOString(),
+      lastDurationMs: Date.now() - startedAt,
+      lastError: e.message,
+    });
     throw e;
   }
 }
@@ -235,6 +263,10 @@ ipcMain.handle('take-snapshot', async (event, filename, tests) => {
   const result = await takeSnapshot(filename, tests);
   enforceRetentionLimit();
   return result;
+});
+
+ipcMain.handle('get-agent-status', async () => {
+  return agentStatus;
 });
 
 ipcMain.handle('list-snapshots', async (event) => {
@@ -361,9 +393,22 @@ ipcMain.handle('upload-snapshot', async (event, filename) => {
   };
 
   try {
+    updateAgentStatus({
+      mode: 'uploading',
+      currentTask: filename,
+      lastError: null,
+    });
     const serverUrl = resolveSnapshotServerUrl();
     const apiKey = HARDCODED_SNAPSHOT_API_KEY;
     if (!serverUrl) {
+      updateAgentStatus({
+        mode: 'error',
+        currentTask: null,
+        lastTask: `Upload ${filename}`,
+        lastRunAt: new Date().toISOString(),
+        lastDurationMs: null,
+        lastError: 'Hardcoded snapshot server URL is invalid or points to localhost.',
+      });
       return {
         success: false,
         error: 'Hardcoded snapshot server URL is invalid or points to localhost.'
@@ -387,12 +432,36 @@ ipcMain.handle('upload-snapshot', async (event, filename) => {
 
     const result = await createSnapshotRow(serverUrl, apiKey, payload);
     if (result.status === 200 || result.status === 201) {
+      updateAgentStatus({
+        mode: 'idle',
+        currentTask: null,
+        lastTask: `Upload ${filename}`,
+        lastRunAt: new Date().toISOString(),
+        lastDurationMs: null,
+        lastError: null,
+      });
       return { success: true, id: result.body?.id || null };
     }
 
+    updateAgentStatus({
+      mode: 'error',
+      currentTask: null,
+      lastTask: `Upload ${filename}`,
+      lastRunAt: new Date().toISOString(),
+      lastDurationMs: null,
+      lastError: result.body?.message || result.body?.error || `HTTP ${result.status}`,
+    });
     return { success: false, error: result.body?.message || result.body?.error || `HTTP ${result.status}` };
   } catch (e) {
     console.error('Error uploading snapshot:', e);
+    updateAgentStatus({
+      mode: 'error',
+      currentTask: null,
+      lastTask: `Upload ${filename}`,
+      lastRunAt: new Date().toISOString(),
+      lastDurationMs: null,
+      lastError: e.message,
+    });
     return { success: false, error: e.message };
   }
 });
@@ -425,6 +494,24 @@ let autoSnapshotEnabled = false;
 let maxSnapshots = 0; // 0 = unlimited
 let testDefaults = { cpu: true, memory: true, processes: true, network: true, disk: true, users: true };
 let customSnapshotDir = null; // null = use default userData path
+let agentStatus = {
+  mode: 'idle',
+  currentTask: null,
+  lastTask: null,
+  lastRunAt: null,
+  lastDurationMs: null,
+  lastError: null,
+  host: os.hostname(),
+  platform: process.platform,
+  nodeVersion: process.versions.node,
+};
+
+function updateAgentStatus(patch) {
+  agentStatus = { ...agentStatus, ...patch };
+  if (mainWindow) {
+    mainWindow.webContents.send('agent-status-updated', agentStatus);
+  }
+}
 
 // Returns the active snapshot data directory
 function getSnapshotDir() {
