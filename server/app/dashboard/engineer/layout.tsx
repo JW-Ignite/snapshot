@@ -22,17 +22,17 @@ export default function EngineerLayout({
   const pathname = usePathname();
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="app-shell min-h-screen">
       {/* Header */}
-      <header className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+      <header className="app-header text-white">
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-0 py-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link href="/dashboard" className="text-white/80 hover:text-white text-sm">
+              <Link href="/dashboard" className="text-sm text-zinc-400 hover:text-zinc-100">
                 ← Dashboard
               </Link>
-              <div className="h-6 w-px bg-white/30" />
-              <h1 className="text-xl font-bold flex items-center gap-2">
+              <div className="h-6 w-px bg-[var(--border)]" />
+              <h1 className="flex items-center gap-2 text-xl font-bold">
                 <span>⚙️</span>
                 Engineer Panel
               </h1>
@@ -49,11 +49,10 @@ export default function EngineerLayout({
                     key={item.href}
                     href={item.href}
                     className={`
-                      px-4 py-2 rounded-lg text-sm font-medium transition-colors
-                      flex items-center gap-2
+                      flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors
                       ${isActive
-                        ? 'bg-white/20 text-white'
-                        : 'text-white/70 hover:text-white hover:bg-white/10'
+                        ? 'bg-white text-black'
+                        : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
                       }
                     `}
                   >
@@ -68,7 +67,7 @@ export default function EngineerLayout({
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-6">
+      <main className="app-page">
         {children}
       </main>
     </div>

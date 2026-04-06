@@ -67,8 +67,8 @@ export default function EngineerPage() {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-500">Loading machines...</p>
+          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-white"></div>
+          <p className="text-zinc-500">Loading machines...</p>
         </div>
       </div>
     );
@@ -76,11 +76,11 @@ export default function EngineerPage() {
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-        <p className="text-red-600">{error}</p>
+      <div className="app-card app-card-inner text-center">
+        <p className="text-red-300">{error}</p>
         <button
           onClick={() => window.location.reload()}
-          className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+          className="app-btn app-btn-danger mt-4"
         >
           Retry
         </button>
@@ -94,15 +94,15 @@ export default function EngineerPage() {
       <div className="mb-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-gray-800">Machine Overview</h2>
-            <p className="text-gray-500 mt-1">
+            <h2 className="text-2xl font-bold text-zinc-100">Machine Overview</h2>
+            <p className="mt-1 text-zinc-500">
               {machines.length} machines connected. Manual refresh only to keep background traffic near zero.
             </p>
           </div>
           <button
             onClick={loadMachines}
             disabled={refreshing}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-60"
+            className="app-btn app-btn-primary"
           >
             {refreshing ? 'Refreshing...' : 'Refresh'}
           </button>

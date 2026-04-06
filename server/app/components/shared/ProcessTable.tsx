@@ -37,7 +37,7 @@ export function ProcessTable({ processes, maxRows = 20, showSearch = false, titl
   return (
     <div>
       {title && (
-        <h3 className="text-lg font-semibold text-gray-700 mb-3">
+        <h3 className="mb-3 text-lg font-semibold text-zinc-100">
           {title} ({processes.length} total)
         </h3>
       )}
@@ -48,18 +48,18 @@ export function ProcessTable({ processes, maxRows = 20, showSearch = false, titl
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter processes..."
-          className="w-full border border-gray-300 rounded-md px-3 py-2 mb-3 text-sm"
+          className="app-input mb-3 text-sm"
         />
       )}
 
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+      <div className="app-card">
         {displayed.map((proc, i) => (
-          <div key={`${proc.pid}-${i}`} className="px-4 py-2 border-b text-sm flex justify-between items-center">
+          <div key={`${proc.pid}-${i}`} className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3 text-sm last:border-b-0">
             <div>
-              <span className="font-medium">{proc.name}</span>
-              <span className="text-gray-400 ml-2">PID {proc.pid}</span>
+              <span className="font-medium text-zinc-100">{proc.name}</span>
+              <span className="ml-2 text-zinc-500">PID {proc.pid}</span>
             </div>
-            <div className="text-right text-gray-500">
+            <div className="text-right text-zinc-400">
               <span className="mr-4">CPU {proc.cpu_usage?.toFixed(2) ?? '0.00'}%</span>
               <span>MEM {proc.mem_usage?.toFixed(2) ?? '0.00'}%</span>
             </div>
@@ -67,13 +67,13 @@ export function ProcessTable({ processes, maxRows = 20, showSearch = false, titl
         ))}
 
         {remaining > 0 && (
-          <div className="px-4 py-2 text-sm text-gray-400 text-center">
+          <div className="px-4 py-3 text-center text-sm text-zinc-500">
             ...and {remaining} more
           </div>
         )}
 
         {displayed.length === 0 && (
-          <div className="px-4 py-4 text-sm text-gray-400 text-center">
+          <div className="px-4 py-4 text-center text-sm text-zinc-500">
             No processes found
           </div>
         )}

@@ -155,12 +155,12 @@ export default function MachineDetailPage({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100">
+      <div className="app-shell min-h-screen">
         <div className="max-w-7xl mx-auto px-4 py-8">
           <div className="flex items-center justify-center py-20">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-              <p className="text-gray-500">Loading machine details...</p>
+              <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-white"></div>
+              <p className="text-zinc-500">Loading machine details...</p>
             </div>
           </div>
         </div>
@@ -170,13 +170,13 @@ export default function MachineDetailPage({
 
   if (error || !machine) {
     return (
-      <div className="min-h-screen bg-gray-100">
+      <div className="app-shell min-h-screen">
         <div className="max-w-7xl mx-auto px-4 py-8">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-            <p className="text-red-600">{error || 'Machine not found'}</p>
+          <div className="app-card app-card-inner text-center">
+            <p className="text-red-300">{error || 'Machine not found'}</p>
             <Link
               href="/dashboard/engineer"
-              className="mt-4 inline-block px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              className="app-btn app-btn-primary mt-4"
             >
               Back to Overview
             </Link>
@@ -187,26 +187,26 @@ export default function MachineDetailPage({
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="app-shell min-h-screen">
       {/* Header */}
-      <header className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+      <header className="app-header text-white">
+        <div className="mx-auto flex w-full max-w-7xl items-center gap-4 px-0 py-0">
           <div className="flex items-center gap-4">
-            <Link href="/dashboard/engineer" className="text-white/80 hover:text-white text-sm">
+            <Link href="/dashboard/engineer" className="text-sm text-zinc-400 hover:text-zinc-100">
               ← Back to Overview
             </Link>
-            <div className="h-6 w-px bg-white/30" />
+            <div className="h-6 w-px bg-[var(--border)]" />
             <div className="flex items-center gap-3">
               <span className="text-3xl">{machineTypeIcons[machine.machine_type]}</span>
               <div>
                 <h1 className="text-xl font-bold">{machine.machine_name}</h1>
-                <p className="text-sm text-white/70">{machine.machine_type} · {machine.snapshot_count} snapshots</p>
+                <p className="text-sm text-zinc-400">{machine.machine_type} · {machine.snapshot_count} snapshots</p>
               </div>
             </div>
             <button
               onClick={loadMachine}
               disabled={refreshing}
-              className="ml-auto rounded-lg bg-white/15 px-3 py-2 text-sm text-white hover:bg-white/25 disabled:opacity-60"
+              className="app-btn app-btn-secondary ml-auto"
             >
               {refreshing ? 'Refreshing...' : 'Refresh'}
             </button>
@@ -214,19 +214,19 @@ export default function MachineDetailPage({
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-6">
+      <main className="app-page">
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Left Column: Timeline */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg p-4 shadow-sm mb-4">
-              <h3 className="font-semibold text-gray-800 mb-2">Snapshot Timeline</h3>
-              <p className="text-sm text-gray-500 mb-4">
+            <div className="app-card app-card-inner mb-4">
+              <h3 className="mb-2 font-semibold text-zinc-100">Snapshot Timeline</h3>
+              <p className="mb-4 text-sm text-zinc-500">
                 Select 2 snapshots to compare. Click to toggle selection.
               </p>
               {selectedIds.length === 2 && (
                 <button
                   onClick={() => setSelectedIds([])}
-                  className="w-full mb-4 px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200"
+                  className="app-btn app-btn-secondary mb-4 w-full"
                 >
                   Clear Selection
                 </button>
@@ -247,9 +247,9 @@ export default function MachineDetailPage({
             {selectedIds.length === 2 && (
               <div>
                 {comparing ? (
-                  <div className="bg-white rounded-lg p-8 shadow-sm text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-                    <p className="text-gray-500">Comparing snapshots...</p>
+                  <div className="app-card app-card-inner text-center">
+                    <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-white"></div>
+                    <p className="text-zinc-500">Comparing snapshots...</p>
                   </div>
                 ) : comparison ? (
                   <SnapshotDiff
@@ -258,8 +258,8 @@ export default function MachineDetailPage({
                     afterName={getSnapshotName(selectedIds[1])}
                   />
                 ) : (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
-                    <p className="text-yellow-700">Failed to compare snapshots</p>
+                  <div className="app-card app-card-inner text-center">
+                    <p className="text-amber-300">Failed to compare snapshots</p>
                   </div>
                 )}
               </div>
@@ -268,7 +268,7 @@ export default function MachineDetailPage({
             {/* System Info */}
             {machine.latest_system && (
               <div>
-                <h3 className="text-lg font-semibold text-gray-700 mb-3">
+                <h3 className="mb-3 text-lg font-semibold text-zinc-200">
                   💻 Latest System Information
                 </h3>
                 <SystemInfoCard system={machine.latest_system} />
@@ -278,18 +278,18 @@ export default function MachineDetailPage({
             {/* Network Ports */}
             {machine.latest_listening_ports.length > 0 && (
               <div>
-                <h3 className="text-lg font-semibold text-gray-700 mb-3">
+                <h3 className="mb-3 text-lg font-semibold text-zinc-200">
                   🌐 Listening Ports ({machine.latest_port_count})
                 </h3>
-                <div className="bg-white rounded-lg shadow-sm overflow-hidden max-h-60 overflow-y-auto">
+                <div className="app-card max-h-60 overflow-y-auto">
                   {machine.latest_listening_ports.map((port: any, i: number) => (
-                    <div key={i} className="px-4 py-2 border-b text-sm flex justify-between">
-                      <span className="font-medium">{port.process_name || 'Unknown'}</span>
-                      <span className="text-gray-500">{port.protocol?.toUpperCase()} :{port.local_port}</span>
+                    <div key={i} className="flex justify-between border-b border-[var(--border)] px-4 py-3 text-sm last:border-b-0">
+                      <span className="font-medium text-zinc-100">{port.process_name || 'Unknown'}</span>
+                      <span className="text-zinc-500">{port.protocol?.toUpperCase()} :{port.local_port}</span>
                     </div>
                   ))}
                   {machine.latest_port_count > machine.latest_listening_ports.length && (
-                    <div className="px-4 py-2 text-center text-gray-400 text-sm">
+                    <div className="px-4 py-3 text-center text-sm text-zinc-500">
                       ...and {machine.latest_port_count - machine.latest_listening_ports.length} more
                     </div>
                   )}

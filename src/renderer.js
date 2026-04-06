@@ -31,6 +31,7 @@ let trendStartDate, trendEndDate, trendGenerateBtn, trendAnalyticsPanel;
 let trendPreset24hBtn, trendPreset7dBtn;
 let fileSearchPathInput, fileSearchNameInput, fileSearchFolderInput, fileSearchProcessInput, fileSearchRegistryInput, fileSearchVersionInput;
 let fileSearchRunBtn, fileSearchResult;
+let agentStatus, agentMode, agentDetails;
 
 function buildUI() {
   const htmlString = `
@@ -39,6 +40,7 @@ function buildUI() {
         <h1> System Snapshot Viewer</h1>
         <p class="subtitle">View and manage system snapshots</p>
         <div class="header-row">
+          <div id="agentHeaderStatus" class="agent-header-status">Agent: Idle</div>
           <button id="settingsBtn" class="btn btn-settings" title="Settings">⚙️</button>
         </div>
       </header>
@@ -50,6 +52,14 @@ function buildUI() {
             <button id="closeSettingsBtn" class="btn btn-close-settings">X</button>
           </div>
           <div class="settings-body">
+            <div class="setting-item" style="border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius-md); padding: 12px;">
+              <label class="setting-label">
+                <span>Local Test Agent</span>
+              </label>
+              <div id="agentStatus" class="setting-status">Agent: Idle</div>
+              <div id="agentMode" class="setting-desc" style="margin-top: 6px;">Mode: idle</div>
+              <div id="agentDetails" class="setting-desc">Waiting for snapshot jobs</div>
+            </div>
             <div class="setting-item">
               <label class="setting-label">
                 <span>Automatic Snapshots</span>
@@ -613,6 +623,48 @@ function initializeApp() {
       console.error("Failed to load test defaults:", e);
     }
   })();
+
+  function renderAgentStatus(status) {
+    if (!status) return;
+
+    const modeLabel = status.mode === "snapshot"
+      ? `Running snapshot${status.currentTask ? `: ${status.currentTask}` : ""}`
+      : status.mode === "uploading"
+        ? `Uploading${status.currentTask ? `: ${status.currentTask}` : ""}`
+        : status.mode === "error"
+          ? "Agent: Error"
+          : "Agent: Idle";
+
+    if (agentHeaderStatus) {
+      agentHeaderStatus.textContent = modeLabel;
+      agentHeaderStatus.className = `agent-header-status ${status.mode === "idle" ? "agent-idle" : "agent-busy"}`;
+    }
+
+    if (agentStatus && agentMode && agentDetails) {
+      agentStatus.textContent = modeLabel;
+      agentStatus.className = `setting-status ${status.mode === "idle" ? "status-on" : "status-busy"}`;
+      agentMode.textContent = `Mode: ${status.mode}`;
+
+      const lastRun = status.lastRunAt ? new Date(status.lastRunAt).toLocaleString() : "never";
+      const duration = typeof status.lastDurationMs === "number" ? `${(status.lastDurationMs / 1000).toFixed(1)}s` : "n/a";
+      agentDetails.textContent = status.lastError
+        ? `Last error: ${status.lastError}`
+        : `Host: ${status.host} · Last task: ${status.lastTask || "none"} · Last run: ${lastRun} · Duration: ${duration}`;
+    }
+  }
+
+  (async () => {
+    try {
+      const status = await ipcRenderer.invoke("get-agent-status");
+      renderAgentStatus(status);
+    } catch (e) {
+      console.error("Failed to load agent status:", e);
+    }
+  })();
+
+  ipcRenderer.on("agent-status-updated", (_, status) => {
+    renderAgentStatus(status);
+  });
 
   Object.entries(testCheckboxes).forEach(([key, el]) => {
     if (el)

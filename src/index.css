@@ -71,6 +71,7 @@ body {
   display: grid;
   grid-template-rows: 64px 1fr;
   height: 100vh;
+  min-height: 0;
 }
 
 /* ══════════════════════════════════════ */
@@ -103,6 +104,33 @@ header .subtitle {
   font-family: 'Space Mono', monospace;
 }
 
+.header-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.agent-header-status {
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.agent-header-status.agent-idle {
+  color: var(--lime-light);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.agent-header-status.agent-busy {
+  color: var(--cyan-light);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
 /* ══════════════════════════════════════ */
 /* MAIN CONTENT                           */
 /* ══════════════════════════════════════ */
@@ -110,6 +138,7 @@ header .subtitle {
   display: grid;
   grid-template-columns: 240px 1fr;
   overflow: hidden;
+  min-height: 0;
   transition: grid-template-columns 0.3s ease;
 }
 
@@ -126,6 +155,7 @@ header .subtitle {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
   transition: all 0.3s ease;
   min-width: 0;
 }
@@ -204,6 +234,7 @@ header .subtitle {
 .snapshot-list-container {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
   padding: 12px 10px;
 }
 
@@ -268,6 +299,7 @@ header .subtitle {
   overflow-y: auto;
   background: var(--bg);
   padding: 28px 32px;
+  min-height: 0;
 }
 
 .empty-state {
@@ -552,12 +584,6 @@ section h3::after {
   width: auto;
 }
 
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 /* ══════════════════════════════════════ */
 /* COMPARISON                             */
 /* ══════════════════════════════════════ */
@@ -576,6 +602,22 @@ section h3::after {
   letter-spacing: 1px;
   color: var(--text-3);
   margin-bottom: 16px;
+}
+
+.comparison-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-right: 48px;
+}
+
+.comparison-summary-text {
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .comparison-grid {
@@ -762,28 +804,95 @@ section h3::after {
   color: var(--text);
 }
 
-/* SETTINGS PAGE */
-.settings-page {
+/* ══════════════════════════════════════ */
+/* SETTINGS + AGENT STATUS                */
+/* ══════════════════════════════════════ */
+.settings-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
+  padding: 24px;
+}
+
+.settings-content {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 48px);
+  margin: 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 28px;
 }
 
-.settings-form .info-row {
-  align-items: center;
-}
-
-.settings-form .info-label {
-  width: 220px;
-}
-
-.settings-form .info-value {
+.settings-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-header h3 {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.settings-body {
+  padding: 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
-/* ensure header-buttons spacing when Settings is active */
-.header-buttons {
-  gap: 8px;
+.setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.setting-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.setting-desc {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.setting-status {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+}
+
+.setting-status.status-on {
+  color: var(--lime-light);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.setting-status.status-busy {
+  color: var(--cyan-light);
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
 }
