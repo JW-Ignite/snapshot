@@ -773,6 +773,9 @@ function buildComparisonAnalysis(baselineName, afterName) {
       };
     })
     .filter(Boolean);
+  const recentAddedFiles = newFilesystemItems
+    .filter(item => item.type === 'file')
+    .sort((a, b) => b.mtime_ms - a.mtime_ms || a.name.localeCompare(b.name));
 
   const processChanges = afterProcesses
     .map(afterProc => {
@@ -924,6 +927,7 @@ function buildComparisonAnalysis(baselineName, afterName) {
     new_filesystem_items: newFilesystemItems,
     removed_filesystem_items: removedFilesystemItems,
     modified_filesystem_items: modifiedFilesystemItems,
+    recent_added_files: recentAddedFiles,
     process_changes: processChanges,
     memory_change_gb: memoryChangeGb.toFixed(2),
     new_listening_ports: newListeningPorts,
@@ -972,6 +976,10 @@ function buildComparisonReportHtml(analysis) {
   const newFilesystemRows = analysis.new_filesystem_items.length > 0
     ? analysis.new_filesystem_items.slice(0, 20).map(item => `<li>${escapeHtml(item.name)} <span>${escapeHtml(item.scope)} • ${escapeHtml(item.type)}</span></li>`).join('')
     : '<li>No new filesystem items detected.</li>';
+
+  const recentAddedFileRows = analysis.recent_added_files.length > 0
+    ? analysis.recent_added_files.slice(0, 20).map(item => `<li>${escapeHtml(item.name)} <span>${escapeHtml(item.scope)} • ${new Date(item.mtime_ms).toLocaleString()}</span></li>`).join('')
+    : '<li>No recently added files detected.</li>';
 
   const removedFilesystemRows = analysis.removed_filesystem_items.length > 0
     ? analysis.removed_filesystem_items.slice(0, 20).map(item => `<li>${escapeHtml(item.name)} <span>${escapeHtml(item.scope)} • ${escapeHtml(item.type)}</span></li>`).join('')
@@ -1128,6 +1136,7 @@ function buildComparisonReportHtml(analysis) {
       <div class="summary-card"><div class="label">Removed Processes</div><div class="value">${analysis.removed_processes.length}</div><div class="subtle">Processes that disappeared from the after snapshot.</div></div>
       <div class="summary-card"><div class="label">New Apps</div><div class="value">${analysis.new_applications.length}</div><div class="subtle">New software discovered in the app inventory.</div></div>
       <div class="summary-card"><div class="label">Startup Items</div><div class="value">${analysis.new_startup_items.length}</div><div class="subtle">New persistence artifacts registered at startup.</div></div>
+      <div class="summary-card"><div class="label">Recent Files</div><div class="value">${analysis.recent_added_files.length}</div><div class="subtle">New files added in monitored locations.</div></div>
       <div class="summary-card"><div class="label">File Adds</div><div class="value">${analysis.new_filesystem_items.length}</div><div class="subtle">New filesystem items in monitored install locations.</div></div>
       <div class="summary-card"><div class="label">File Mods</div><div class="value">${analysis.modified_filesystem_items.length}</div><div class="subtle">Modified files or directories in monitored locations.</div></div>
       <div class="summary-card"><div class="label">Memory Delta</div><div class="value">${escapeHtml(analysis.memory_change_gb)} GB</div><div class="subtle">Change in used system memory between snapshots.</div></div>
@@ -1168,6 +1177,11 @@ function buildComparisonReportHtml(analysis) {
     <div class="section">
       <h2>Removed Startup Items</h2>
       <ul>${removedStartupRows}</ul>
+    </div>
+
+    <div class="section">
+      <h2>Recently Added Files</h2>
+      <ul>${recentAddedFileRows}</ul>
     </div>
 
     <div class="section">
